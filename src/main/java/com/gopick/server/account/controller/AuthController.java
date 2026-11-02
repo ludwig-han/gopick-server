@@ -24,9 +24,11 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<CurrentUserResponse> login(
-            @Valid @RequestBody LoginAccountRequest loginAccountRequest, HttpSession session) {
+            @Valid @RequestBody LoginAccountRequest loginAccountRequest,
+            HttpServletRequest request) {
         CurrentUserResponse response = authService.login(loginAccountRequest.getEmail(), loginAccountRequest.getPassword());
 
+        HttpSession session = request.getSession();
         session.setAttribute("accountId", response.getAccountId());
         return ResponseEntity.ok(response);
     }
