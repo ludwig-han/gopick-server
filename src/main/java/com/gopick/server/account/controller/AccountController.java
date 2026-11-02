@@ -1,8 +1,11 @@
 package com.gopick.server.account.controller;
 
 import com.gopick.server.account.dto.CreateAccountRequest;
-import com.gopick.server.account.dto.CreateAccountResponse;
+
+import com.gopick.server.account.dto.CurrentUserResponse;
+import com.gopick.server.account.dto.LoginAccountRequest;
 import com.gopick.server.account.service.AccountService;
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,13 +22,14 @@ public class AccountController {
     }
 
     @PostMapping("/accounts")
-    public ResponseEntity<CreateAccountResponse> createAccount(
-            @Valid @RequestBody CreateAccountRequest createAccountRequest) {
+    public ResponseEntity<CurrentUserResponse> createAccount(
+            @Valid @RequestBody CreateAccountRequest createAccountRequest, HttpSession session) {
 
-        CreateAccountResponse response = accountService.createAccount(
+        CurrentUserResponse response = accountService.createAccount(
                 createAccountRequest.getEmail(), createAccountRequest.getPassword()
         );
 
+        session.setAttribute("accountId", response.getAccountId());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 }

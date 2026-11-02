@@ -10,9 +10,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(DuplicateEmailException.class)
-    public ResponseEntity<String> handleDuplicateEmailException(DuplicateEmailException e) {
-        return ResponseEntity
-                .status(HttpStatus.CONFLICT)
-                .body(e.getMessage());
+    public ResponseEntity<ErrorResponse> handleDuplicateEmailException(DuplicateEmailException e) {
+        ErrorResponse response = new ErrorResponse(
+                "DUPLICATE_EMAIL",
+                e.getMessage()
+        );
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
     }
 }
