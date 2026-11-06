@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class CreateProfileRequest {
@@ -28,12 +29,12 @@ public class CreateProfileRequest {
     @NotBlank
     private String intro;
 
-    private List<String> parts;
-    private List<String> interests;
-    private List<String> roles;
+    private List<String> parts = new ArrayList<>();
+    private List<String> interests = new ArrayList<>();
+    private List<String> roles = new ArrayList<>();
 
     @Valid
-    private List<ProfileTechnologyRequest> technologies;
+    private List<ProfileTechnologyRequest> technologies = new ArrayList<>();
 
     public CreateProfileRequest() {}
 
