@@ -4,16 +4,20 @@ import com.gopick.server.account.domain.Account;
 import com.gopick.server.account.dto.CurrentUserResponse;
 import com.gopick.server.account.exception.InvalidCredentialsException;
 import com.gopick.server.account.repository.AccountRepository;
+import com.gopick.server.profile.domain.Profile;
+import com.gopick.server.profile.repository.ProfileRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
 public class AuthService {
     private final AccountRepository accountRepository;
+    private final ProfileRepository profileRepository;
     private final PasswordEncoder passwordEncoder;
 
-    public AuthService(AccountRepository accountRepository,  PasswordEncoder passwordEncoder) {
+    public AuthService(AccountRepository accountRepository, ProfileRepository profileRepository, PasswordEncoder passwordEncoder) {
         this.accountRepository = accountRepository;
+        this.profileRepository = profileRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -26,6 +30,9 @@ public class AuthService {
             throw new InvalidCredentialsException();
         }
 
-        return new CurrentUserResponse(account.getId(), account.getEmail(), null);  // todo: profile 구현 후 accountId로 profileId 조회
+        Long profileId = profileRepository.findByAccount_Id(account.getId())
+                .map(Profile::getId)
+                .orElse(null);
+        return new CurrentUserResponse(account.getId(), account.getEmail(), profileId);
     }
 }

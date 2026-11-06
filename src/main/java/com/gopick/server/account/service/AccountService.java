@@ -8,6 +8,8 @@ import com.gopick.server.account.exception.InvalidCredentialsException;
 import com.gopick.server.account.exception.UnauthenticatedException;
 import com.gopick.server.account.repository.AccountRepository;
 
+import com.gopick.server.profile.domain.Profile;
+import com.gopick.server.profile.repository.ProfileRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -17,10 +19,12 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class AccountService {
     private final AccountRepository accountRepository;
+    private final ProfileRepository profileRepository;
     private final PasswordEncoder passwordEncoder;
 
-    public AccountService(AccountRepository accountRepository, PasswordEncoder passwordEncoder) {
+    public AccountService(AccountRepository accountRepository, ProfileRepository profileRepository, PasswordEncoder passwordEncoder) {
         this.accountRepository = accountRepository;
+        this.profileRepository = profileRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -38,6 +42,10 @@ public class AccountService {
 
     public CurrentUserResponse getCurrentUser(Long accountId) {
         Account result = accountRepository.findById(accountId).orElseThrow(UnauthenticatedException::new);
-        return new CurrentUserResponse(result.getId(), result.getEmail(), null);
+
+        Long profileId = profileRepository.findByAccount_Id(accountId)
+                .map(Profile::getId)
+                .orElse(null);
+        return new CurrentUserResponse(result.getId(), result.getEmail(), profileId);
     }
 }
