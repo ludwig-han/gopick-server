@@ -3,6 +3,7 @@ package com.gopick.server.global;
 import com.gopick.server.account.exception.DuplicateEmailException;
 import com.gopick.server.account.exception.InvalidCredentialsException;
 import com.gopick.server.account.exception.UnauthenticatedException;
+import com.gopick.server.profile.exception.DuplicateProfileException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -67,5 +68,14 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+    }
+
+    @ExceptionHandler(DuplicateProfileException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicateProfileException(DuplicateProfileException e) {
+        ErrorResponse response = new ErrorResponse(
+                "DUPLICATE_PROFILE",
+                e.getMessage()
+        );
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
     }
 }

@@ -35,3 +35,8 @@ out/
 
 ### VS Code ###
 .vscode/
+
+
+### Cookies.txt ###
+cookies
+cookies*.txt
