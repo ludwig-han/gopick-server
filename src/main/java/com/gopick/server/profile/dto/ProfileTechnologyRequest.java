@@ -18,7 +18,6 @@ public class ProfileTechnologyRequest {
         return technology;
     }
 
-
     public Integer getLevel() {
         return level;
     }
