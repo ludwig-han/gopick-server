@@ -4,6 +4,9 @@ import com.gopick.server.account.exception.DuplicateEmailException;
 import com.gopick.server.account.exception.InvalidCredentialsException;
 import com.gopick.server.account.exception.UnauthenticatedException;
 import com.gopick.server.profile.exception.DuplicateProfileException;
+import com.gopick.server.profile.exception.InvalidProfileIdException;
+import com.gopick.server.profile.exception.PrivateProfileException;
+import com.gopick.server.profile.exception.ProfileNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -78,4 +81,23 @@ public class GlobalExceptionHandler {
         );
         return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
     }
+
+    @ExceptionHandler(ProfileNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleProfileNotFoundException(ProfileNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse("PROFILE_NOT_FOUND", e.getMessage()));
+    }
+
+    @ExceptionHandler(PrivateProfileException.class)
+    public ResponseEntity<ErrorResponse> handlePrivateProfileException(PrivateProfileException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ErrorResponse("PRIVATE_PROFILE", e.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidProfileIdException.class)
+    public ResponseEntity<ValidationErrorResponse> handleInvalidProfileIdException(InvalidProfileIdException e) {
+        return ResponseEntity.badRequest().body(new ValidationErrorResponse(
+                "VALIDATION_ERROR", "입력값을 확인해주세요.", Map.of("profileId", e.getMessage())));
+    }
+
 }

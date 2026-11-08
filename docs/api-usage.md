@@ -2,6 +2,8 @@
 
 현재 개발 중인 GoPick 백엔드 staging 서버 사용 안내입니다.
 
+v0.2 설계와 현재 구현의 차이 및 추가 확인 사항은 [API v0.2 설계와 현재 구현의 차이](api-v2-gaps.md)를 참고해주세요.
+
 ## 1. Base URL
 
 ```text
@@ -260,6 +262,28 @@ POST /profiles
 
 ---
 
+## 프로필 상세 조회
+
+```text
+GET /profiles/{profileId}
+```
+
+로그인 세션이 필요합니다. 공개 프로필과 본인의 비공개 프로필은 `200 OK`로 조회합니다.
+응답은 기본정보, `parts`, `technologies`, `interests`, `preferredRoles`,
+`preferences`, `experiences`를 포함하는 전용 DTO입니다.
+
+```text
+400 VALIDATION_ERROR
+401 UNAUTHENTICATED
+403 PRIVATE_PROFILE
+404 PROFILE_NOT_FOUND
+```
+
+v0.2 API 설계에 따라 다른 사용자의 비공개 프로필은 `403 PRIVATE_PROFILE`로 처리합니다.
+응답 예시와 테스트 방법은 [프로필 상세 조회 API](profile-detail-api.md)를 참고해주세요.
+
+---
+
 # 4. 공통 에러 형식
 
 일반적인 에러 응답:
@@ -291,6 +315,8 @@ DUPLICATE_EMAIL
 INVALID_CREDENTIALS
 UNAUTHENTICATED
 DUPLICATE_PROFILE
+PRIVATE_PROFILE
+PROFILE_NOT_FOUND
 ```
 
 # 5. Staging 사용 시 참고
