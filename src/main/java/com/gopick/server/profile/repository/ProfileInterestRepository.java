@@ -7,4 +7,5 @@ import java.util.List;
 
 public interface ProfileInterestRepository extends JpaRepository<ProfileInterest, Long> {
     List<ProfileInterest> findAllByProfile_IdOrderByIdAsc(Long profileId);
+    void deleteAllByProfile_Id(Long profileId);
 }

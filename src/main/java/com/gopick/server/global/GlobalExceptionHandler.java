@@ -3,10 +3,7 @@ package com.gopick.server.global;
 import com.gopick.server.account.exception.DuplicateEmailException;
 import com.gopick.server.account.exception.InvalidCredentialsException;
 import com.gopick.server.account.exception.UnauthenticatedException;
-import com.gopick.server.profile.exception.DuplicateProfileException;
-import com.gopick.server.profile.exception.InvalidProfileIdException;
-import com.gopick.server.profile.exception.PrivateProfileException;
-import com.gopick.server.profile.exception.ProfileNotFoundException;
+import com.gopick.server.profile.exception.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -100,4 +97,9 @@ public class GlobalExceptionHandler {
                 "VALIDATION_ERROR", "입력값을 확인해주세요.", Map.of("profileId", e.getMessage())));
     }
 
+    @ExceptionHandler(ProfileAccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleProfileAccessDeniedException(ProfileAccessDeniedException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ErrorResponse("PROFILE_ACCESS_DENIED", e.getMessage()));
+    }
 }
