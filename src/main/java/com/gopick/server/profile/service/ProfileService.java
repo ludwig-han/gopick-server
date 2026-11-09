@@ -75,6 +75,8 @@ public class ProfileService {
 
         Profile savedProfile = profileRepository.save(profile);
 
+        saveProfileDetails(savedProfile, profileRequest);
+
         return new CreateProfileResponse(savedProfile.getId());
     }
 
