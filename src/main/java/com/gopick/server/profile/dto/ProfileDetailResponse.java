@@ -7,7 +7,6 @@ public record ProfileDetailResponse(
         String name,
         String major,
         String contactPlatform,
-        String contactId,
         boolean isPublic,
         String teamTendency,
         String intro,

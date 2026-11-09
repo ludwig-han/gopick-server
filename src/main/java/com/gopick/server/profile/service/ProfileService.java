@@ -163,7 +163,6 @@ public class ProfileService {
                 profile.getName(),
                 profile.getMajor(),
                 profile.getContactPlatform(),
-                profile.getContactId(),
                 profile.isPublic(),
                 profile.getTeamTendency(),
                 profile.getIntro(),

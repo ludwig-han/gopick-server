@@ -29,7 +29,6 @@
   "name": "홍길동",
   "major": "컴퓨터공학",
   "contactPlatform": "DISCORD",
-  "contactId": "example",
   "isPublic": true,
   "teamTendency": "FOLLOW",
   "intro": "백엔드 개발에 관심이 있습니다.",
@@ -52,7 +51,7 @@ v0.2에는 상세 조회의 성공 응답 스키마가 별도로 정의되어 �
 위 응답은 현재 프로필 데이터와 v0.2 프로필 생성 예시의 필드를 바탕으로 구성했습니다.
 경험의 상세 구조는 현재 `ProfileExperience`와 `ExperienceAttribute`에 저장된 정보를 DTO로 매핑합니다.
 연관 데이터가 없으면 해당 필드는 빈 배열입니다. 배열은 저장 ID 오름차순으로 반환합니다.
-계정 엔티티, 계정 이메일, 비밀번호는 응답에 포함하지 않습니다.
+연락처 ID, 계정 엔티티, 계정 이메일, 비밀번호는 응답에 포함하지 않습니다.
 
 ## 오류 응답
 
