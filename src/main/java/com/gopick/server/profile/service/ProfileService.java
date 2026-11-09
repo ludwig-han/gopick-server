@@ -5,10 +5,7 @@ import com.gopick.server.account.exception.UnauthenticatedException;
 import com.gopick.server.account.repository.AccountRepository;
 import com.gopick.server.profile.domain.*;
 import com.gopick.server.profile.dto.*;
-import com.gopick.server.profile.exception.DuplicateProfileException;
-import com.gopick.server.profile.exception.InvalidProfileIdException;
-import com.gopick.server.profile.exception.PrivateProfileException;
-import com.gopick.server.profile.exception.ProfileNotFoundException;
+import com.gopick.server.profile.exception.*;
 import com.gopick.server.profile.repository.ProfileExperienceAttributeRepository;
 import com.gopick.server.profile.repository.ProfileExperienceRepository;
 import com.gopick.server.profile.repository.ProfileInterestRepository;
@@ -78,32 +75,6 @@ public class ProfileService {
 
         Profile savedProfile = profileRepository.save(profile);
 
-        for (String part : profileRequest.getParts()) {
-            ProfilePart profilePart = new ProfilePart(savedProfile, part);
-            profilePartRepository.save(profilePart);
-        }
-
-        for (String interest : profileRequest.getInterests()) {
-            ProfileInterest profileInterest = new ProfileInterest(savedProfile, interest);
-            profileInterestRepository.save(profileInterest);
-        }
-
-        for (String role : profileRequest.getRoles()) {
-            ProfileRole profileRole = new ProfileRole(savedProfile, role);
-            profileRoleRepository.save(profileRole);
-        }
-
-        for (ProfileTechnologyRequest technologyRequest : profileRequest.getTechnologies()) {
-            ProfileTechnology profileTechnology = new ProfileTechnology(
-                    savedProfile,
-                    technologyRequest.getTechnology(),
-                    technologyRequest.getLevel()
-            );
-            profileTechnologyRepository.save(profileTechnology);
-        }
-
-        savePreferences(savedProfile, profileRequest.getPreferences());
-        saveExperiences(savedProfile, profileRequest.getExperiences());
         return new CreateProfileResponse(savedProfile.getId());
     }
 
@@ -226,6 +197,86 @@ public class ProfileService {
                 preferences,
                 experienceDetails
         );
+    }
+
+    @Transactional
+    public void updateProfile(Long accountId, String rawProfileId, ProfileRequest profileRequest) {
+        if (accountId == null || !accountRepository.existsById(accountId)) {
+            throw new UnauthenticatedException();
+        }
+
+        Long profileId = parseProfileId(rawProfileId);
+
+        Profile profile = profileRepository.findById(profileId)
+                .orElseThrow(ProfileNotFoundException::new);
+
+        if (!profile.getAccount().getId().equals(accountId)) {
+            throw new ProfileAccessDeniedException();
+        }
+
+        profile.update(
+                profileRequest.getName(),
+                profileRequest.getMajor(),
+                profileRequest.getContactPlatform(),
+                profileRequest.getContactId(),
+                profileRequest.getIsPublic(),
+                profileRequest.getTeamTendency(),
+                profileRequest.getIntro()
+        );
+
+        deleteProfileDetails(profileId);
+
+        saveProfileDetails(profile, profileRequest);
+    }
+
+    private void saveProfileDetails(Profile profile, ProfileRequest profileRequest) {
+        for (String part : profileRequest.getParts()) {
+            ProfilePart profilePart = new ProfilePart(profile, part);
+            profilePartRepository.save(profilePart);
+        }
+
+        for (String interest : profileRequest.getInterests()) {
+            ProfileInterest profileInterest = new ProfileInterest(profile, interest);
+            profileInterestRepository.save(profileInterest);
+        }
+
+        for (String role : profileRequest.getRoles()) {
+            ProfileRole profileRole = new ProfileRole(profile, role);
+            profileRoleRepository.save(profileRole);
+        }
+
+        for (ProfileTechnologyRequest technologyRequest : profileRequest.getTechnologies()) {
+            ProfileTechnology profileTechnology = new ProfileTechnology(
+                    profile,
+                    technologyRequest.getTechnology(),
+                    technologyRequest.getLevel()
+            );
+            profileTechnologyRepository.save(profileTechnology);
+        }
+
+        savePreferences(profile, profileRequest.getPreferences());
+        saveExperiences(profile, profileRequest.getExperiences());
+    }
+
+    private void deleteProfileDetails(Long profileId) {
+        List<Long> experienceIds = profileExperienceRepository
+                .findAllByProfile_IdOrderByIdAsc(profileId)
+                .stream()
+                .map(ProfileExperience::getId)
+                .toList();
+
+        if (!experienceIds.isEmpty()) {
+            profileExperienceAttributeRepository
+                    .deleteAllByExperience_IdIn(experienceIds);
+        }
+
+        profileExperienceRepository.deleteAllByProfile_Id(profileId);
+
+        profilePartRepository.deleteAllByProfile_Id(profileId);
+        profileInterestRepository.deleteAllByProfile_Id(profileId);
+        profileRoleRepository.deleteAllByProfile_Id(profileId);
+        profileTechnologyRepository.deleteAllByProfile_Id(profileId);
+        profilePreferenceRepository.deleteAllByProfile_Id(profileId);
     }
 
     private Long parseProfileId(String rawProfileId) {

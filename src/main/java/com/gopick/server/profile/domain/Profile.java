@@ -62,6 +62,24 @@ public class Profile {
         this.intro = intro;
     }
 
+    public void update(
+            String name,
+            String major,
+            String contactPlatform,
+            String contactId,
+            boolean isPublic,
+            String teamTendency,
+            String intro
+    ) {
+        this.name = name;
+        this.major = major;
+        this.contactPlatform = contactPlatform;
+        this.contactId = contactId;
+        this.isPublic = isPublic;
+        this.teamTendency = teamTendency;
+        this.intro = intro;
+    }
+
     @PrePersist
     public void prePersist() {
         this.createdAt = LocalDateTime.now();

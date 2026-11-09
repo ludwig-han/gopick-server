@@ -10,11 +10,7 @@ import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 public class ProfileController {
@@ -48,6 +44,15 @@ public class ProfileController {
         return ResponseEntity.ok(
                 profileService.getProfileDetail(accountId, profileId)
         );
+    }
+
+    @PatchMapping("/profiles/{profileId}")
+    public ResponseEntity<?> updateProfile(@PathVariable("profileId") String profileId,
+                                           @Valid @RequestBody ProfileRequest profileRequest,
+                                           HttpServletRequest request) {
+        Long accountId = requireAccountId(request);
+        profileService.updateProfile(accountId, profileId, profileRequest);
+        return ResponseEntity.noContent().build();
     }
 
     private Long requireAccountId(HttpServletRequest request) {
