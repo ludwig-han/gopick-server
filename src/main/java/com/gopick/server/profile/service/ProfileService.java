@@ -3,17 +3,8 @@ package com.gopick.server.profile.service;
 import com.gopick.server.account.domain.Account;
 import com.gopick.server.account.exception.UnauthenticatedException;
 import com.gopick.server.account.repository.AccountRepository;
-import com.gopick.server.profile.domain.ExperienceAttribute;
-import com.gopick.server.profile.domain.Profile;
-import com.gopick.server.profile.domain.ProfileExperience;
-import com.gopick.server.profile.domain.ProfileInterest;
-import com.gopick.server.profile.domain.ProfilePart;
-import com.gopick.server.profile.domain.ProfileRole;
-import com.gopick.server.profile.domain.ProfileTechnology;
-import com.gopick.server.profile.dto.CreateProfileResponse;
-import com.gopick.server.profile.dto.ProfileDetailResponse;
-import com.gopick.server.profile.dto.ProfileRequest;
-import com.gopick.server.profile.dto.ProfileTechnologyRequest;
+import com.gopick.server.profile.domain.*;
+import com.gopick.server.profile.dto.*;
 import com.gopick.server.profile.exception.DuplicateProfileException;
 import com.gopick.server.profile.exception.InvalidProfileIdException;
 import com.gopick.server.profile.exception.PrivateProfileException;
@@ -111,7 +102,65 @@ public class ProfileService {
             profileTechnologyRepository.save(profileTechnology);
         }
 
+        savePreferences(savedProfile, profileRequest.getPreferences());
+        saveExperiences(savedProfile, profileRequest.getExperiences());
         return new CreateProfileResponse(savedProfile.getId());
+    }
+
+    private void saveExperiences(Profile profile, List<ProfileExperienceRequest> experiences) {
+        if (experiences == null) {
+            return;
+        }
+
+        for (ProfileExperienceRequest experienceRequest : experiences) {
+            ProfileExperience experience = profileExperienceRepository.save(
+                    new ProfileExperience(profile, experienceRequest.getDescription())
+            );
+
+            saveExperienceAttributes(experience, "TYPE", experienceRequest.getTypes());
+
+            saveExperienceAttributes(experience, "FIELD", experienceRequest.getFields());
+
+            saveExperienceAttributes(experience, "ROLE", experienceRequest.getRoles());
+
+            saveExperienceAttributes(experience,"TECHNOLOGY", experienceRequest.getTechnologies());
+        }
+    }
+
+    private void saveExperienceAttributes(ProfileExperience experience, String category, List<String> values) {
+        if (values == null) {
+            return;
+        }
+
+        for (String value : values) {
+            profileExperienceAttributeRepository.save(
+                    new ExperienceAttribute(experience, category, value)
+            );
+        }
+    }
+
+    private void savePreferences(Profile profile, ProfilePreferencesRequest preferences) {
+        if (preferences == null) {
+            return;
+        }
+
+        savePreferenceValues(profile, "COLLAB", preferences.getCollaboration());
+        savePreferenceValues(profile, "STYLE", preferences.getStyles());
+        savePreferenceValues(profile, "STRENGTH", preferences.getStrengths());
+        savePreferenceValues(profile, "PROJECT", preferences.getProjectTendencies());
+        savePreferenceValues(profile, "COMM", preferences.getCommunication());
+    }
+
+    private void savePreferenceValues(Profile profile, String category, List<String> values) {
+        if (values == null) {
+            return;
+        }
+
+        for (String value : values) {
+            profilePreferenceRepository.save(
+                    new ProfilePreference(profile, category, value)
+            );
+        }
     }
 
     @Transactional(readOnly = true)
