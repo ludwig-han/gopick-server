@@ -1,9 +1,9 @@
 package com.gopick.server.profile.controller;
 
 import com.gopick.server.account.exception.UnauthenticatedException;
-import com.gopick.server.profile.dto.CreateProfileRequest;
 import com.gopick.server.profile.dto.CreateProfileResponse;
 import com.gopick.server.profile.dto.ProfileDetailResponse;
+import com.gopick.server.profile.dto.ProfileRequest;
 import com.gopick.server.profile.service.ProfileService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
@@ -27,27 +27,37 @@ public class ProfileController {
 
     @PostMapping("/profiles")
     public ResponseEntity<CreateProfileResponse> createProfile(
-            @Valid @RequestBody CreateProfileRequest createProfileRequest,
+            @Valid @RequestBody ProfileRequest profileRequest,
             HttpServletRequest request) {
+
         Long accountId = requireAccountId(request);
+
         CreateProfileResponse createProfileResponse =
-                profileService.createProfile(accountId, createProfileRequest);
+                profileService.createProfile(accountId, profileRequest);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(createProfileResponse);
     }
 
     @GetMapping("/profiles/{profileId}")
     public ResponseEntity<ProfileDetailResponse> getProfileDetail(
-            @PathVariable("profileId") String profileId, HttpServletRequest request) {
+            @PathVariable("profileId") String profileId,
+            HttpServletRequest request) {
+
         Long accountId = requireAccountId(request);
-        return ResponseEntity.ok(profileService.getProfileDetail(accountId, profileId));
+
+        return ResponseEntity.ok(
+                profileService.getProfileDetail(accountId, profileId)
+        );
     }
 
     private Long requireAccountId(HttpServletRequest request) {
         HttpSession session = request.getSession(false);
-        if (session == null || !(session.getAttribute("accountId") instanceof Long accountId)) {
+
+        if (session == null
+                || !(session.getAttribute("accountId") instanceof Long accountId)) {
             throw new UnauthenticatedException();
         }
+
         return accountId;
     }
 }

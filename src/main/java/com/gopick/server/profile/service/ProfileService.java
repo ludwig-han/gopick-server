@@ -10,9 +10,9 @@ import com.gopick.server.profile.domain.ProfileInterest;
 import com.gopick.server.profile.domain.ProfilePart;
 import com.gopick.server.profile.domain.ProfileRole;
 import com.gopick.server.profile.domain.ProfileTechnology;
-import com.gopick.server.profile.dto.CreateProfileRequest;
 import com.gopick.server.profile.dto.CreateProfileResponse;
 import com.gopick.server.profile.dto.ProfileDetailResponse;
+import com.gopick.server.profile.dto.ProfileRequest;
 import com.gopick.server.profile.dto.ProfileTechnologyRequest;
 import com.gopick.server.profile.exception.DuplicateProfileException;
 import com.gopick.server.profile.exception.InvalidProfileIdException;
@@ -66,8 +66,9 @@ public class ProfileService {
     }
 
     @Transactional
-    public CreateProfileResponse createProfile(Long accountId, CreateProfileRequest createProfileRequest) {
-        Account account = accountRepository.findById(accountId).orElseThrow(UnauthenticatedException::new);
+    public CreateProfileResponse createProfile(Long accountId, ProfileRequest profileRequest) {
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(UnauthenticatedException::new);
 
         if (profileRepository.existsByAccount_Id(accountId)) {
             throw new DuplicateProfileException();
@@ -75,35 +76,38 @@ public class ProfileService {
 
         Profile profile = new Profile(
                 account,
-                createProfileRequest.getName(),
-                createProfileRequest.getMajor(),
-                createProfileRequest.getContactPlatform(),
-                createProfileRequest.getContactId(),
-                createProfileRequest.getIsPublic(),
-                createProfileRequest.getTeamTendency(),
-                createProfileRequest.getIntro()
+                profileRequest.getName(),
+                profileRequest.getMajor(),
+                profileRequest.getContactPlatform(),
+                profileRequest.getContactId(),
+                profileRequest.getIsPublic(),
+                profileRequest.getTeamTendency(),
+                profileRequest.getIntro()
         );
 
         Profile savedProfile = profileRepository.save(profile);
 
-        for (String part : createProfileRequest.getParts()) {
+        for (String part : profileRequest.getParts()) {
             ProfilePart profilePart = new ProfilePart(savedProfile, part);
             profilePartRepository.save(profilePart);
         }
 
-        for (String interest : createProfileRequest.getInterests()) {
+        for (String interest : profileRequest.getInterests()) {
             ProfileInterest profileInterest = new ProfileInterest(savedProfile, interest);
             profileInterestRepository.save(profileInterest);
         }
 
-        for (String role : createProfileRequest.getRoles()) {
+        for (String role : profileRequest.getRoles()) {
             ProfileRole profileRole = new ProfileRole(savedProfile, role);
             profileRoleRepository.save(profileRole);
         }
 
-        for (ProfileTechnologyRequest technologyRequest : createProfileRequest.getTechnologies()) {
+        for (ProfileTechnologyRequest technologyRequest : profileRequest.getTechnologies()) {
             ProfileTechnology profileTechnology = new ProfileTechnology(
-                    savedProfile, technologyRequest.getTechnology(), technologyRequest.getLevel());
+                    savedProfile,
+                    technologyRequest.getTechnology(),
+                    technologyRequest.getLevel()
+            );
             profileTechnologyRepository.save(profileTechnology);
         }
 
