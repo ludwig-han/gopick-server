@@ -1,17 +1,37 @@
 package com.gopick.server.profile.service;
 
 import com.gopick.server.account.domain.Account;
-import com.gopick.server.profile.domain.*;
-import com.gopick.server.profile.repository.ProfileTechnologyRepository;
-import com.gopick.server.profile.dto.ProfileTechnologyRequest;
-import com.gopick.server.profile.exception.DuplicateProfileException;
 import com.gopick.server.account.exception.UnauthenticatedException;
 import com.gopick.server.account.repository.AccountRepository;
+import com.gopick.server.profile.domain.ExperienceAttribute;
+import com.gopick.server.profile.domain.Profile;
+import com.gopick.server.profile.domain.ProfileExperience;
+import com.gopick.server.profile.domain.ProfileInterest;
+import com.gopick.server.profile.domain.ProfilePart;
+import com.gopick.server.profile.domain.ProfileRole;
+import com.gopick.server.profile.domain.ProfileTechnology;
 import com.gopick.server.profile.dto.CreateProfileRequest;
 import com.gopick.server.profile.dto.CreateProfileResponse;
-import com.gopick.server.profile.repository.*;
-import jakarta.transaction.Transactional;
+import com.gopick.server.profile.dto.ProfileDetailResponse;
+import com.gopick.server.profile.dto.ProfileTechnologyRequest;
+import com.gopick.server.profile.exception.DuplicateProfileException;
+import com.gopick.server.profile.exception.InvalidProfileIdException;
+import com.gopick.server.profile.exception.PrivateProfileException;
+import com.gopick.server.profile.exception.ProfileNotFoundException;
+import com.gopick.server.profile.repository.ProfileExperienceAttributeRepository;
+import com.gopick.server.profile.repository.ProfileExperienceRepository;
+import com.gopick.server.profile.repository.ProfileInterestRepository;
+import com.gopick.server.profile.repository.ProfilePartRepository;
+import com.gopick.server.profile.repository.ProfilePreferenceRepository;
+import com.gopick.server.profile.repository.ProfileRepository;
+import com.gopick.server.profile.repository.ProfileRoleRepository;
+import com.gopick.server.profile.repository.ProfileTechnologyRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class ProfileService {
@@ -82,10 +102,99 @@ public class ProfileService {
         }
 
         for (ProfileTechnologyRequest technologyRequest : createProfileRequest.getTechnologies()) {
-            ProfileTechnology profileTechnology = new ProfileTechnology(savedProfile, technologyRequest.getTechnology(), technologyRequest.getLevel());
+            ProfileTechnology profileTechnology = new ProfileTechnology(
+                    savedProfile, technologyRequest.getTechnology(), technologyRequest.getLevel());
             profileTechnologyRepository.save(profileTechnology);
         }
 
         return new CreateProfileResponse(savedProfile.getId());
+    }
+
+    @Transactional(readOnly = true)
+    public ProfileDetailResponse getProfileDetail(Long accountId, String rawProfileId) {
+        if (accountId == null || !accountRepository.existsById(accountId)) {
+            throw new UnauthenticatedException();
+        }
+        Long profileId = parseProfileId(rawProfileId);
+
+        Profile profile = profileRepository.findById(profileId)
+                .orElseThrow(ProfileNotFoundException::new);
+
+        if (!profile.isPublic() && !profile.getAccount().getId().equals(accountId)) {
+            throw new PrivateProfileException();
+        }
+
+        List<ProfileExperience> experiences = profileExperienceRepository
+                .findAllByProfile_IdOrderByIdAsc(profileId);
+        List<Long> experienceIds = experiences.stream()
+                .map(ProfileExperience::getId)
+                .toList();
+        Map<Long, List<ExperienceAttribute>> attributesByExperience = experienceIds.isEmpty()
+                ? Map.of()
+                : profileExperienceAttributeRepository
+                        .findAllByExperience_IdInOrderByIdAsc(experienceIds).stream()
+                        .collect(Collectors.groupingBy(attribute -> attribute.getExperience().getId()));
+
+        List<String> parts = profilePartRepository.findAllByProfile_IdOrderByIdAsc(profileId).stream()
+                .map(ProfilePart::getPart)
+                .toList();
+        List<ProfileDetailResponse.Technology> technologies = profileTechnologyRepository
+                .findAllByProfile_IdOrderByIdAsc(profileId).stream()
+                .map(technology -> new ProfileDetailResponse.Technology(
+                        technology.getTechnology(), technology.getLevel()))
+                .toList();
+        List<String> interests = profileInterestRepository.findAllByProfile_IdOrderByIdAsc(profileId).stream()
+                .map(ProfileInterest::getField)
+                .toList();
+        List<String> preferredRoles = profileRoleRepository.findAllByProfile_IdOrderByIdAsc(profileId).stream()
+                .map(ProfileRole::getRole)
+                .toList();
+        List<ProfileDetailResponse.Preference> preferences = profilePreferenceRepository
+                .findAllByProfile_IdOrderByIdAsc(profileId).stream()
+                .map(preference -> new ProfileDetailResponse.Preference(
+                        preference.getCategory(), preference.getValue()))
+                .toList();
+        List<ProfileDetailResponse.Experience> experienceDetails = experiences.stream()
+                .map(experience -> toExperienceDetail(experience, attributesByExperience))
+                .toList();
+
+        return new ProfileDetailResponse(
+                profile.getId(),
+                profile.getName(),
+                profile.getMajor(),
+                profile.getContactPlatform(),
+                profile.isPublic(),
+                profile.getTeamTendency(),
+                profile.getIntro(),
+                parts,
+                technologies,
+                interests,
+                preferredRoles,
+                preferences,
+                experienceDetails
+        );
+    }
+
+    private Long parseProfileId(String rawProfileId) {
+        try {
+            long profileId = Long.parseLong(rawProfileId);
+            if (profileId > 0) {
+                return profileId;
+            }
+        } catch (NumberFormatException ignored) {
+            // Invalid and out-of-range IDs use the same validation response.
+        }
+        throw new InvalidProfileIdException();
+    }
+
+    private ProfileDetailResponse.Experience toExperienceDetail(
+            ProfileExperience experience, Map<Long, List<ExperienceAttribute>> attributesByExperience) {
+        List<ProfileDetailResponse.Attribute> attributes = attributesByExperience
+                .getOrDefault(experience.getId(), List.of()).stream()
+                .map(attribute -> new ProfileDetailResponse.Attribute(
+                        attribute.getCategory(), attribute.getValue()))
+                .toList();
+        return new ProfileDetailResponse.Experience(
+                experience.getId(), experience.getDescription(), attributes);
     }
 }
