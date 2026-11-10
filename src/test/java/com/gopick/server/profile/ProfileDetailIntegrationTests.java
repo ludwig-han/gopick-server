@@ -1,14 +1,7 @@
 package com.gopick.server.profile;
 
 import com.gopick.server.account.domain.Account;
-import com.gopick.server.profile.domain.ExperienceAttribute;
-import com.gopick.server.profile.domain.Profile;
-import com.gopick.server.profile.domain.ProfileExperience;
-import com.gopick.server.profile.domain.ProfileInterest;
-import com.gopick.server.profile.domain.ProfilePart;
-import com.gopick.server.profile.domain.ProfilePreference;
-import com.gopick.server.profile.domain.ProfileRole;
-import com.gopick.server.profile.domain.ProfileTechnology;
+import com.gopick.server.profile.domain.*;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -222,11 +215,11 @@ class ProfileDetailIntegrationTests {
         persist(new ProfileTechnology(target, "Java", 3));
         persist(new ProfileInterest(target, "WEB"));
         persist(new ProfileRole(target, "BACKEND"));
-        persist(new ProfilePreference(target, "COLLAB", "정기 회의"));
+        persist(new ProfilePreference(target, ProfilePreferenceCategory.COLLAB, "정기 회의"));
 
         ProfileExperience first = persist(new ProfileExperience(target, "팀 프로젝트 구현"));
-        persist(new ExperienceAttribute(first, "TYPE", "TEAM"));
-        persist(new ExperienceAttribute(first, "TECHNOLOGY", "Java"));
+        persist(new ExperienceAttribute(first, ExperienceAttributeCategory.TYPE, "TEAM"));
+        persist(new ExperienceAttribute(first, ExperienceAttributeCategory.TECHNOLOGY, "Java"));
         persist(new ProfileExperience(target, "학습 프로젝트"));
         return first;
     }
@@ -237,10 +230,10 @@ class ProfileDetailIntegrationTests {
         persist(new ProfileTechnology(other, unrelatedValue, 4));
         persist(new ProfileInterest(other, unrelatedValue));
         persist(new ProfileRole(other, unrelatedValue));
-        persist(new ProfilePreference(other, "COLLAB", unrelatedValue));
+        persist(new ProfilePreference(other, ProfilePreferenceCategory.COLLAB, unrelatedValue));
 
         ProfileExperience experience = persist(new ProfileExperience(other, unrelatedValue));
-        persist(new ExperienceAttribute(experience, "TYPE", unrelatedValue));
+        persist(new ExperienceAttribute(experience, ExperienceAttributeCategory.TYPE, unrelatedValue));
     }
 
     private MockHttpSession session(Account account) {

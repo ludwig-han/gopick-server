@@ -13,16 +13,16 @@ public class ExperienceAttribute {
     @JoinColumn(name = "experience_id", nullable = false)
     private ProfileExperience experience;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    // TODO: category를 enum으로 변경 (TYPE, FIELD, ROLE, TECHNOLOGY)
-    private String category;
+    private ExperienceAttributeCategory category;
 
     @Column(nullable = false)
     private String value;
 
     protected ExperienceAttribute() {}
 
-    public ExperienceAttribute(ProfileExperience experience, String category, String value) {
+    public ExperienceAttribute(ProfileExperience experience, ExperienceAttributeCategory category, String value) {
         this.experience = experience;
         this.category = category;
         this.value = value;
@@ -36,11 +36,11 @@ public class ExperienceAttribute {
         return experience;
     }
 
-    public String getCategory() {
+    public ExperienceAttributeCategory getCategory() {
         return category;
     }
 
-    public void setCategory(String category) {
+    public void setCategory(ExperienceAttributeCategory category) {
         this.category = category;
     }
 

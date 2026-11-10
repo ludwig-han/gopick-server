@@ -1,5 +1,7 @@
 package com.gopick.server.profile.dto;
 
+import com.gopick.server.profile.domain.ProfilePreferenceCategory;
+
 import java.util.List;
 
 public record ProfileDetailResponse(
@@ -19,7 +21,7 @@ public record ProfileDetailResponse(
 ) {
     public record Technology(String technology, Integer level) {}
 
-    public record Preference(String category, String value) {}
+    public record Preference(ProfilePreferenceCategory category, String value) {}
 
     public record Experience(Long experienceId, String description, List<Attribute> attributes) {}
 
