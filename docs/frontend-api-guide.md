@@ -86,6 +86,12 @@ http://127.0.0.1:5173
 POST /accounts
 ```
 
+비밀번호 규칙:
+
+- 8자 이상
+- 영문 1자 이상 포함
+- 숫자 1자 이상 포함
+
 Request:
 
 ```json
@@ -240,7 +246,7 @@ PATCH /profiles/{profileId}
     }
   ],
   "interests": ["웹", "AI"],
-  "roles": ["Backend"],
+  "preferredRoles": ["Backend"],
   "teamTendency": "Follow",
   "preferences": {
     "collaboration": ["빠른 피드백"],
@@ -264,17 +270,17 @@ PATCH /profiles/{profileId}
 
 ### 필수값
 
-| 필드 | 조건 |
-|---|---|
-| `name` | 빈 문자열 불가 |
-| `major` | 빈 문자열 불가 |
+| 필드                | 조건 |
+|-------------------|---|
+| `name`            | 빈 문자열 불가 |
+| `major`           | 빈 문자열 불가 |
 | `contactPlatform` | 빈 문자열 불가 |
-| `contactId` | 빈 문자열 불가 |
-| `isPublic` | 필수 |
-| `parts` | 최소 1개 |
-| `technologies` | 최소 1개 |
-| `interests` | 최소 1개 |
-| `roles` | 최소 1개 |
+| `contactId`       | 빈 문자열 불가 |
+| `isPublic`        | 필수 |
+| `parts`           | 최소 1개 |
+| `technologies`    | 최소 1개 |
+| `interests`       | 최소 1개 |
+| `preferredRoles`  | 최소 1개 |
 
 `teamTendency`, `intro`, `preferences`, `experiences`는 선택값입니다.
 
@@ -394,11 +400,36 @@ Response 예시:
 | 다른 사용자의 비공개 프로필 | `403 PRIVATE_PROFILE` |
 | 없는 프로필 | `404 PROFILE_NOT_FOUND` |
 
-### 연락처 주의
 
-상세조회 응답에는 `contactPlatform`은 있지만 `contactId`는 포함되지 않습니다.
+### Category 값
 
-현재 프론트 문구 기준으로 실제 연락처는 **지원·제안이 수락된 상대에게만 공개**하는 정책입니다.
+`preferences[].category`
+
+| category | 생성/수정 Request 필드 |
+|---|---|
+| `COLLAB` | `preferences.collaboration` |
+| `STYLE` | `preferences.styles` |
+| `STRENGTH` | `preferences.strengths` |
+| `PROJECT` | `preferences.projectTendencies` |
+| `COMM` | `preferences.communication` |
+
+`experiences[].attributes[].category`
+
+| category | 생성/수정 Request 필드 |
+|---|---|
+| `TYPE` | `experiences[].types` |
+| `FIELD` | `experiences[].fields` |
+| `ROLE` | `experiences[].roles` |
+| `TECHNOLOGY` | `experiences[].technologies` |
+
+### 연락처
+
+`contactId`는 요청한 사용자가 해당 프로필의 본인인지에 따라 다르게 반환됩니다.
+
+- 본인 프로필 조회: `contactId` 포함
+- 다른 사용자의 프로필 조회: `contactId`를 응답에 포함하지 않음
+
+실제 연락처가 다른 사용자에게 노출되지 않도록 하기 위한 정책입니다.
 
 ---
 
@@ -408,18 +439,18 @@ Response 예시:
 
 ### 기본 필드
 
-| 프론트 | API |
-|---|---|
-| `name` | `name` |
-| `major` | `major` |
+| 프론트 | API               |
+|---|-------------------|
+| `name` | `name`            |
+| `major` | `major`           |
 | `contactType` | `contactPlatform` |
-| `contactValue` | `contactId` |
-| `isPublic` | `isPublic` |
-| `parts` | `parts` |
-| `fields` | `interests` |
-| `wantedRoles` | `roles` |
-| `teamTendency` | `teamTendency` |
-| `intro` | `intro` |
+| `contactValue` | `contactId`       |
+| `isPublic` | `isPublic`        |
+| `parts` | `parts`           |
+| `fields` | `interests`       |
+| `wantedRoles` | `preferredRoles`  |
+| `teamTendency` | `teamTendency`    |
+| `intro` | `intro`           |
 
 ### 기술 스택
 

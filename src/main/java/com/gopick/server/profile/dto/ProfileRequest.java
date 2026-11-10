@@ -35,7 +35,7 @@ public class ProfileRequest {
     private List<String> interests = new ArrayList<>();
 
     @NotEmpty
-    private List<String> roles = new ArrayList<>();
+    private List<String> preferredRoles = new ArrayList<>();
 
     @Valid
     @NotEmpty
@@ -113,12 +113,12 @@ public class ProfileRequest {
         this.interests = interests;
     }
 
-    public List<String> getRoles() {
-        return roles;
+    public List<String> getPreferredRoles() {
+        return preferredRoles;
     }
 
-    public void setRoles(List<String> roles) {
-        this.roles = roles;
+    public void setPreferredRoles(List<String> preferredRoles) {
+        this.preferredRoles = preferredRoles;
     }
 
     public List<ProfileTechnologyRequest> getTechnologies() {

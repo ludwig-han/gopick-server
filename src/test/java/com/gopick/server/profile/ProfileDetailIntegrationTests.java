@@ -62,7 +62,7 @@ class ProfileDetailIntegrationTests {
         mockMvc.perform(get("/profiles/{profileId}", target.getId()).session(session(owner)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.isPublic").value(false))
-                .andExpect(jsonPath("$.contactId").doesNotExist());
+                .andExpect(jsonPath("$.contactId").value("owner-contact"));
     }
 
     @Test
