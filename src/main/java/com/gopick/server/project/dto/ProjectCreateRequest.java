@@ -1,5 +1,6 @@
 package com.gopick.server.project.dto;
 
+import com.gopick.server.project.domain.ProjectRole;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
@@ -18,11 +19,14 @@ public class ProjectCreateRequest {
     private String extra;
 
     @NotNull
+    private ProjectRole role;
+
+    @NotNull
     private Boolean recruiting;
 
     protected ProjectCreateRequest() {}
 
-    public ProjectCreateRequest(String title, String description, String background, String goal, String wish, String extra, Boolean recruiting) {
+    public ProjectCreateRequest(String title, String description, String background, String goal, String wish, String extra, Boolean recruiting, ProjectRole role) {
         this.title = title;
         this.description = description;
         this.background = background;
@@ -30,6 +34,7 @@ public class ProjectCreateRequest {
         this.wish = wish;
         this.extra = extra;
         this.recruiting = recruiting;
+        this.role = role;
     }
 
     public String getTitle() {
@@ -86,5 +91,13 @@ public class ProjectCreateRequest {
 
     public void setRecruiting(Boolean recruiting) {
         this.recruiting = recruiting;
+    }
+
+    public ProjectRole getRole() {
+        return role;
+    }
+
+    public void setRole(ProjectRole role) {
+        this.role = role;
     }
 }
