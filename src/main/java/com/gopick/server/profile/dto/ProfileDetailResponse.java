@@ -1,7 +1,7 @@
 package com.gopick.server.profile.dto;
 
 import com.gopick.server.profile.domain.ProfilePreferenceCategory;
-
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
 public record ProfileDetailResponse(
@@ -9,6 +9,8 @@ public record ProfileDetailResponse(
         String name,
         String major,
         String contactPlatform,
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        String contactId,
         boolean isPublic,
         String teamTendency,
         String intro,

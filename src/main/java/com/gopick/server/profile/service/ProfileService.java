@@ -184,11 +184,14 @@ public class ProfileService {
                 .map(experience -> toExperienceDetail(experience, attributesByExperience))
                 .toList();
 
+        boolean isOwner = profile.getAccount().getId().equals(accountId);
+
         return new ProfileDetailResponse(
                 profile.getId(),
                 profile.getName(),
                 profile.getMajor(),
                 profile.getContactPlatform(),
+                isOwner ? profile.getContactId() : null,
                 profile.isPublic(),
                 profile.getTeamTendency(),
                 profile.getIntro(),
@@ -242,8 +245,8 @@ public class ProfileService {
             profileInterestRepository.save(profileInterest);
         }
 
-        for (String role : profileRequest.getRoles()) {
-            ProfileRole profileRole = new ProfileRole(profile, role);
+        for (String preferredRole : profileRequest.getPreferredRoles()) {
+            ProfileRole profileRole = new ProfileRole(profile, preferredRole);
             profileRoleRepository.save(profileRole);
         }
 
