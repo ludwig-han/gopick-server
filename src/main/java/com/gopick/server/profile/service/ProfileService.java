@@ -90,17 +90,17 @@ public class ProfileService {
                     new ProfileExperience(profile, experienceRequest.getDescription())
             );
 
-            saveExperienceAttributes(experience, "TYPE", experienceRequest.getTypes());
+            saveExperienceAttributes(experience, ExperienceAttributeCategory.TYPE, experienceRequest.getTypes());
 
-            saveExperienceAttributes(experience, "FIELD", experienceRequest.getFields());
+            saveExperienceAttributes(experience, ExperienceAttributeCategory.FIELD, experienceRequest.getFields());
 
-            saveExperienceAttributes(experience, "ROLE", experienceRequest.getRoles());
+            saveExperienceAttributes(experience, ExperienceAttributeCategory.ROLE, experienceRequest.getRoles());
 
-            saveExperienceAttributes(experience,"TECHNOLOGY", experienceRequest.getTechnologies());
+            saveExperienceAttributes(experience,ExperienceAttributeCategory.TECHNOLOGY, experienceRequest.getTechnologies());
         }
     }
 
-    private void saveExperienceAttributes(ProfileExperience experience, String category, List<String> values) {
+    private void saveExperienceAttributes(ProfileExperience experience, ExperienceAttributeCategory category, List<String> values) {
         if (values == null) {
             return;
         }
@@ -117,14 +117,14 @@ public class ProfileService {
             return;
         }
 
-        savePreferenceValues(profile, "COLLAB", preferences.getCollaboration());
-        savePreferenceValues(profile, "STYLE", preferences.getStyles());
-        savePreferenceValues(profile, "STRENGTH", preferences.getStrengths());
-        savePreferenceValues(profile, "PROJECT", preferences.getProjectTendencies());
-        savePreferenceValues(profile, "COMM", preferences.getCommunication());
+        savePreferenceValues(profile, ProfilePreferenceCategory.COLLAB, preferences.getCollaboration());
+        savePreferenceValues(profile, ProfilePreferenceCategory.STYLE, preferences.getStyles());
+        savePreferenceValues(profile, ProfilePreferenceCategory.STRENGTH, preferences.getStrengths());
+        savePreferenceValues(profile, ProfilePreferenceCategory.PROJECT, preferences.getProjectTendencies());
+        savePreferenceValues(profile, ProfilePreferenceCategory.COMM, preferences.getCommunication());
     }
 
-    private void savePreferenceValues(Profile profile, String category, List<String> values) {
+    private void savePreferenceValues(Profile profile, ProfilePreferenceCategory category, List<String> values) {
         if (values == null) {
             return;
         }
@@ -298,7 +298,7 @@ public class ProfileService {
         List<ProfileDetailResponse.Attribute> attributes = attributesByExperience
                 .getOrDefault(experience.getId(), List.of()).stream()
                 .map(attribute -> new ProfileDetailResponse.Attribute(
-                        attribute.getCategory(), attribute.getValue()))
+                        attribute.getCategory().name(), attribute.getValue()))
                 .toList();
         return new ProfileDetailResponse.Experience(
                 experience.getId(), experience.getDescription(), attributes);

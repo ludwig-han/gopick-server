@@ -13,16 +13,16 @@ public class ProfilePreference {
     @JoinColumn(name = "profile_id", nullable = false)
     private Profile profile;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    // TODO: ProfilePreference category를 enum으로 변경 (COLLAB, STYLE, STRENGTH, PROJECT, COMM)
-    private String category;
+    private ProfilePreferenceCategory category;
 
     @Column(nullable = false)
     private String value;
 
     protected ProfilePreference() {}
 
-    public ProfilePreference(Profile profile, String category, String value) {
+    public ProfilePreference(Profile profile, ProfilePreferenceCategory category, String value) {
         this.profile = profile;
         this.category = category;
         this.value = value;
@@ -36,7 +36,7 @@ public class ProfilePreference {
         return profile;
     }
 
-    public String getCategory() {
+    public ProfilePreferenceCategory getCategory() {
         return category;
     }
 
@@ -44,7 +44,7 @@ public class ProfilePreference {
         return value;
     }
 
-    public void setCategory(String category) {
+    public void setCategory(ProfilePreferenceCategory category) {
         this.category = category;
     }
 
