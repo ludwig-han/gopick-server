@@ -1,16 +1,16 @@
 package com.gopick.server.profile.controller;
 
-import com.gopick.server.account.exception.UnauthenticatedException;
 import com.gopick.server.profile.dto.CreateProfileResponse;
 import com.gopick.server.profile.dto.ProfileDetailResponse;
 import com.gopick.server.profile.dto.ProfileRequest;
 import com.gopick.server.profile.service.ProfileService;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import static com.gopick.server.global.SessionUtil.requireAccountId;
 
 @RestController
 public class ProfileController {
@@ -53,16 +53,5 @@ public class ProfileController {
         Long accountId = requireAccountId(request);
         profileService.updateProfile(accountId, profileId, profileRequest);
         return ResponseEntity.noContent().build();
-    }
-
-    private Long requireAccountId(HttpServletRequest request) {
-        HttpSession session = request.getSession(false);
-
-        if (session == null
-                || !(session.getAttribute("accountId") instanceof Long accountId)) {
-            throw new UnauthenticatedException();
-        }
-
-        return accountId;
     }
 }
