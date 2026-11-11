@@ -8,6 +8,7 @@ public record ProfileDetailResponse(
         Long profileId,
         String name,
         String major,
+        @JsonInclude(JsonInclude.Include.NON_NULL)
         String contactPlatform,
         @JsonInclude(JsonInclude.Include.NON_NULL)
         String contactId,
