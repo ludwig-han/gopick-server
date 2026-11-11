@@ -48,6 +48,7 @@ class ProfileDetailIntegrationTests {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.profileId").value(target.getId().intValue()))
                 .andExpect(jsonPath("$.isPublic").value(true))
+                .andExpect(jsonPath("$.contactPlatform").doesNotExist())
                 .andExpect(jsonPath("$.contactId").doesNotExist())
                 .andExpect(jsonPath("$.account").doesNotExist())
                 .andExpect(jsonPath("$.email").doesNotExist())
@@ -62,7 +63,8 @@ class ProfileDetailIntegrationTests {
         mockMvc.perform(get("/profiles/{profileId}", target.getId()).session(session(owner)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.isPublic").value(false))
-                .andExpect(jsonPath("$.contactId").value("owner-contact"));
+                .andExpect(jsonPath("$.contactId").value("owner-contact"))
+                .andExpect(jsonPath("$.contactPlatform").value("DISCORD"));
     }
 
     @Test
@@ -172,7 +174,7 @@ class ProfileDetailIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("owner"))
                 .andExpect(jsonPath("$.major").value("컴퓨터공학"))
-                .andExpect(jsonPath("$.contactPlatform").value("DISCORD"))
+                .andExpect(jsonPath("$.contactPlatform").doesNotExist())
                 .andExpect(jsonPath("$.contactId").doesNotExist())
                 .andExpect(jsonPath("$.teamTendency").value("FOLLOW"))
                 .andExpect(jsonPath("$.intro").value("owner-intro"))

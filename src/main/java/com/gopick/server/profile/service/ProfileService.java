@@ -190,7 +190,7 @@ public class ProfileService {
                 profile.getId(),
                 profile.getName(),
                 profile.getMajor(),
-                profile.getContactPlatform(),
+                isOwner ? profile.getContactPlatform() : null,
                 isOwner ? profile.getContactId() : null,
                 profile.isPublic(),
                 profile.getTeamTendency(),
