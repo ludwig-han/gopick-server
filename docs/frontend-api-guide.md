@@ -75,6 +75,9 @@ http://127.0.0.1:5173
 | 프로필 생성 | `POST` | `/profiles` |
 | 프로필 상세 조회 | `GET` | `/profiles/{profileId}` |
 | 프로필 수정 | `PATCH` | `/profiles/{profileId}` |
+| 프로젝트 목록 조회 | `GET` | `/projects` |
+| 프로젝트 상세 조회 | `GET` | `/projects/{projectId}` |
+| 프로젝트 기본 정보 수정 | `PATCH` | `/projects/{projectId}` |
 
 ---
 
@@ -546,3 +549,124 @@ Validation 에러:
 ```
 
 프론트에서 에러 처리가 필요한 경우 가능하면 `message` 문구 자체보다 `code`를 기준으로 분기해주세요.
+
+
+---
+
+## 9. 프로젝트 목록 / 상세 조회 / 기본 정보 수정
+
+세 API 모두 로그인 세션이 필요하므로 `credentials: 'include'`를 설정합니다.
+
+### 프로젝트 목록 조회
+
+```text
+GET /projects?status=PREPARING&recruiting=true
+```
+
+| 쿼리 파라미터 | 값 | 설명 |
+|---|---|---|
+| `status` | `PREPARING`, `IN_PROGRESS`, `COMPLETED` | 선택. 프로젝트 생명주기 상태 |
+| `recruiting` | `true`, `false` | 선택. 공개 모집 여부 |
+
+두 필터 모두 생략 가능하며, 함께 지정하면 AND 조건으로 적용됩니다. 결과는 프로젝트 ID 내림차순이며 없으면 빈 배열 `[]`을 반환합니다.
+
+성공: `200 OK`
+
+```json
+[
+  {
+    "projectId": 1,
+    "title": "GoPick",
+    "description": "팀 매칭 서비스",
+    "background": "팀원 탐색",
+    "goal": "서비스 구현",
+    "wish": "백엔드 개발",
+    "extra": "주 1회 회의",
+    "lifecycleStatus": "PREPARING",
+    "stage": "PLANNING",
+    "recruiting": true,
+    "createdAt": "2026-11-11T12:00:00",
+    "statusUpdatedAt": "2026-11-11T12:00:00",
+    "stageUpdatedAt": "2026-11-11T12:00:00"
+  }
+]
+```
+
+응답의 생명주기 필드명은 `status`가 아닌 `lifecycleStatus`입니다. 단계 `stage` 값은 `PLANNING`, `DESIGN`, `IMPLEMENTATION`, `TESTING`, `PRODUCTION`입니다.
+
+### 프로젝트 상세 조회
+
+```text
+GET /projects/{projectId}
+```
+
+성공: `200 OK`. 위 목록의 프로젝트 기본 정보에 `members` 배열이 추가됩니다.
+
+```json
+{
+  "projectId": 1,
+  "title": "GoPick",
+  "description": "팀 매칭 서비스",
+  "background": "팀원 탐색",
+  "goal": "서비스 구현",
+  "wish": "백엔드 개발",
+  "extra": "주 1회 회의",
+  "lifecycleStatus": "PREPARING",
+  "stage": "PLANNING",
+  "recruiting": true,
+  "createdAt": "2026-11-11T12:00:00",
+  "statusUpdatedAt": "2026-11-11T12:00:00",
+  "stageUpdatedAt": "2026-11-11T12:00:00",
+  "members": [
+    {
+      "profileId": 3,
+      "name": "김수뭉",
+      "isPublic": true,
+      "role": "BACKEND",
+      "authority": "LEADER",
+      "joinedAt": "2026-11-11T12:00:00"
+    }
+  ]
+}
+```
+
+`role`은 `PM`, `FRONTEND`, `BACKEND`, `AI`, `DESIGN`, `OTHERS` 중 하나이며, `authority`는 `LEADER` 또는 `MEMBER`입니다. 다른 사용자의 비공개 프로필은 `name`이 `null`로 반환됩니다. 계정 정보와 연락처는 반환하지 않습니다.
+
+### 프로젝트 기본 정보 수정
+
+```text
+PATCH /projects/{projectId}
+```
+
+해당 프로젝트의 `LEADER`만 수정할 수 있습니다.
+
+Request 예시:
+
+```json
+{
+  "title": "GoPick",
+  "description": "팀 매칭 서비스",
+  "background": "팀원 탐색",
+  "goal": "서비스 구현",
+  "wish": "백엔드 개발",
+  "extra": "주 1회 회의",
+  "recruiting": true
+}
+```
+
+- 수정할 필드만 보내며 생략한 필드는 유지됩니다. 명시적인 `null`과 지원하지 않는 필드는 허용하지 않습니다.
+- 텍스트 필드는 최대 255자입니다. `title`은 빈 문자열이나 공백만 보낼 수 없습니다. 나머지 텍스트를 지우려면 빈 문자열을 보냅니다.
+- `recruiting: true`는 `PREPARING` 상태에서만 가능합니다.
+- 이 API로 생명주기, 단계, 팀원 권한을 변경할 수 없습니다.
+
+성공: `200 OK`와 수정 후 프로젝트 기본 정보 객체를 반환합니다. 응답 구조는 목록 배열의 각 항목과 같고 `members`는 포함하지 않습니다.
+
+### 주요 오류
+
+| 상황 | 응답 |
+|---|---|
+| 잘못된 프로젝트 ID, 필터 또는 수정 요청 | `400 VALIDATION_ERROR` |
+| 비로그인 또는 존재하지 않는 계정의 세션 | `401 UNAUTHENTICATED` |
+| 팀원 또는 비구성원이 수정 요청 | `403 PROJECT_ACCESS_DENIED` |
+| 없는 프로젝트 상세 조회 또는 수정 | `404 PROJECT_NOT_FOUND` |
+| 시작·완료된 프로젝트에서 공개 모집 재개 | `409 INVALID_PROJECT_STATE` |
