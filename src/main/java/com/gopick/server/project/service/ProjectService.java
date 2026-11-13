@@ -19,11 +19,14 @@ public class ProjectService {
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository projectMemberRepository;
     private final ProfileRepository profileRepository;
+    private final ProjectRecruitmentEditor recruitmentEditor;
 
-    public ProjectService(ProjectRepository projectRepository, ProjectMemberRepository projectMemberRepository, ProfileRepository profileRepository) {
+    public ProjectService(ProjectRepository projectRepository, ProjectMemberRepository projectMemberRepository,
+                          ProfileRepository profileRepository, ProjectRecruitmentEditor recruitmentEditor) {
         this.projectRepository = projectRepository;
         this.projectMemberRepository = projectMemberRepository;
         this.profileRepository = profileRepository;
+        this.recruitmentEditor = recruitmentEditor;
     }
 
     @Transactional
@@ -41,6 +44,7 @@ public class ProjectService {
                 projectCreateRequest.getDescription(),
                 projectCreateRequest.getTitle(),
                 projectCreateRequest.getRecruiting());
+        recruitmentEditor.apply(project, projectCreateRequest);
 
         // 3. db에 저장 => saveProject
         Project savedProject = projectRepository.save(project);

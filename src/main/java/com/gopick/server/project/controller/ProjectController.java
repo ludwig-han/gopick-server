@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import static com.gopick.server.global.SessionUtil.requireAccountId;
 
 @RestController
+@ProjectApiEndpoint
 @RequestMapping("/projects")
 public class ProjectController {
     private final ProjectService projectService;

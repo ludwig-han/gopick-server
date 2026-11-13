@@ -7,7 +7,7 @@ import com.gopick.server.project.exception.ProjectValidationException;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
-public class ProjectUpdateRequest {
+public class ProjectUpdateRequest extends ProjectRecruitmentRequest {
     @Size(max = 255)
     @Pattern(regexp = "(?s).*\\S.*", message = "제목은 비어 있을 수 없습니다.")
     private String title;
