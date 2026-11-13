@@ -4,7 +4,7 @@ import com.gopick.server.project.domain.ProjectRole;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
-public class ProjectCreateRequest {
+public class ProjectCreateRequest extends ProjectRecruitmentRequest {
     @NotBlank
     private String title;
 

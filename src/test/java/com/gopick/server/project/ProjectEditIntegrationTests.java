@@ -67,7 +67,7 @@ class ProjectEditIntegrationTests extends ProjectApiFixture {
         assertThat(project.getRecruiting()).isFalse();
     }
     @ParameterizedTest
-    @ValueSource(strings = {"stage", "status", "lifecycleStatus", "members", "attributes", "experience", "recruitments", "links"})
+    @ValueSource(strings = {"stage", "status", "lifecycleStatus", "members"})
     void unsupportedFieldsAreRejectedRatherThanSilentlySaved(String field) throws Exception {
         mvc.perform(edit("{\"" + field + "\":[]}"))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));

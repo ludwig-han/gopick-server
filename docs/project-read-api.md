@@ -15,13 +15,17 @@ GET /projects?status=COMPLETED
 응답은 프로젝트 기본 정보 DTO의 JSON 배열이며 ID 내림차순입니다. 결과가 없으면 `[]`입니다.
 생명주기는 응답에서 `lifecycleStatus`로 반환합니다.
 
-## 기본 상세
+## 상세
 
 상세 응답은 `projectId`, `title`, `description`, `background`, `goal`, `wish`, `extra`,
 `lifecycleStatus`, `stage`, `recruiting`, 생성/상태/단계 변경 시각과 `members`를 포함합니다.
 `members`는 `profileId`, `name`, `isPublic`, `role`, `authority`, `joinedAt`을 반환합니다.
 역할과 팀장/팀원 권한은 별개이며 계정 Entity와 연락처는 반환하지 않습니다.
 다른 사용자의 비공개 프로필 이름은 `null`입니다.
+
+상세 응답에는 프로젝트 속성 `attributes`, 경험 조건 `experience`, 역할별 모집 조건
+`recruitments`, 관련 링크 `links`도 포함됩니다. 기존 프로젝트에 저장된 조건이 없으면
+목록은 빈 배열이고 경험 조건의 `mode`는 `NONE`입니다.
 
 ## 오류
 

@@ -3,6 +3,7 @@ package com.gopick.server.project.service;
 import com.gopick.server.project.domain.Project;
 import com.gopick.server.project.domain.ProjectStatus;
 import com.gopick.server.project.dto.ProjectReadResponse;
+import com.gopick.server.project.dto.ProjectRecruitmentDetails;
 import com.gopick.server.project.dto.ProjectResponse;
 import com.gopick.server.project.exception.ProjectNotFoundException;
 import com.gopick.server.project.exception.ProjectValidationException;
@@ -19,9 +20,12 @@ public class ProjectReadService {
     private final ProjectRepository projects;
     private final ProjectSearchRepository search;
     private final ProjectMembershipRepository memberships;
+    private final RecruitmentRepository recruitments;
     public ProjectReadService(ProjectAccess access, ProjectRepository projects,
-                              ProjectSearchRepository search, ProjectMembershipRepository memberships) {
+                              ProjectSearchRepository search, ProjectMembershipRepository memberships,
+                              RecruitmentRepository recruitments) {
         this.access = access; this.projects = projects; this.search = search; this.memberships = memberships;
+        this.recruitments = recruitments;
     }
     public List<ProjectResponse> list(Long accountId, String status, String recruiting) {
         access.requireAccount(accountId);
@@ -47,8 +51,10 @@ public class ProjectReadService {
             return new ProjectReadResponse.Member(profile.getId(), visible ? profile.getName() : null, profile.isPublic(),
                     m.getRole(), m.getMemberType(), m.getJoinedAt());
         }).toList();
+        var recruitment = ProjectRecruitmentDetails.from(p, recruitments.findAllByProject_IdOrderByRoleAsc(p.getId()));
         return new ProjectReadResponse(p.getId(), p.getTitle(), p.getDescription(), p.getBackground(), p.getGoal(),
                 p.getWish(), p.getExtra(), p.getStatus(), p.getStage(), p.getRecruiting(), p.getCreatedAt(),
-                p.getStatusUpdatedAt(), p.getStageUpdatedAt(), members);
+                p.getStatusUpdatedAt(), p.getStageUpdatedAt(), members, recruitment.attributes(),
+                recruitment.experience(), recruitment.recruitments(), recruitment.links());
     }
 }

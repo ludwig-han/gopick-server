@@ -3,6 +3,8 @@ package com.gopick.server.project.domain;
 import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 public class Project {
@@ -32,6 +34,34 @@ public class Project {
 
     @Column(nullable = false)
     private Boolean recruiting;
+
+    @ElementCollection
+    @CollectionTable(name = "project_attribute", joinColumns = @JoinColumn(name = "project_id"))
+    @OrderColumn(name = "sort_order")
+    private List<ProjectAttribute> attributes = new ArrayList<>();
+
+    @Enumerated(EnumType.STRING)
+    private ProjectConditionMode experienceMode;
+
+    @ElementCollection
+    @CollectionTable(name = "project_experience_type", joinColumns = @JoinColumn(name = "project_id"))
+    @Column(name = "experience_type", nullable = false)
+    @OrderColumn(name = "sort_order")
+    private List<String> experienceTypes = new ArrayList<>();
+
+    @ElementCollection
+    @CollectionTable(name = "project_experience_field", joinColumns = @JoinColumn(name = "project_id"))
+    @Column(name = "experience_field", nullable = false)
+    @OrderColumn(name = "sort_order")
+    private List<String> experienceFields = new ArrayList<>();
+
+    @OneToMany(mappedBy = "project", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Recruitment> recruitments = new ArrayList<>();
+
+    @ElementCollection
+    @CollectionTable(name = "project_link", joinColumns = @JoinColumn(name = "project_id"))
+    @OrderColumn(name = "sort_order")
+    private List<ProjectLink> links = new ArrayList<>();
 
     private LocalDateTime createdAt;
     private LocalDateTime stageUpdatedAt;
@@ -98,6 +128,38 @@ public class Project {
 
     public Boolean getRecruiting() {
         return recruiting;
+    }
+
+    public List<ProjectAttribute> getAttributes() {
+        return attributes;
+    }
+
+    public ProjectConditionMode getExperienceMode() {
+        return experienceMode;
+    }
+
+    public List<String> getExperienceTypes() {
+        return experienceTypes;
+    }
+
+    public List<String> getExperienceFields() {
+        return experienceFields;
+    }
+
+    public List<Recruitment> getRecruitments() {
+        return recruitments;
+    }
+
+    public List<ProjectLink> getLinks() {
+        return links;
+    }
+
+    public void updateExperience(ProjectConditionMode mode, List<String> types, List<String> fields) {
+        experienceMode = mode;
+        experienceTypes.clear();
+        experienceTypes.addAll(types);
+        experienceFields.clear();
+        experienceFields.addAll(fields);
     }
 
     public LocalDateTime getCreatedAt() {

@@ -10,13 +10,20 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ProjectEditService {
     private final ProjectAccess access;
-    public ProjectEditService(ProjectAccess access) { this.access = access; }
+    private final ProjectRecruitmentEditor recruitmentEditor;
+
+    public ProjectEditService(ProjectAccess access, ProjectRecruitmentEditor recruitmentEditor) {
+        this.access = access;
+        this.recruitmentEditor = recruitmentEditor;
+    }
+
     @Transactional
     public ProjectResponse update(Long accountId, String projectId, ProjectUpdateRequest update) {
         var project = access.lock(accountId, projectId);
         access.requireLeader(project.getId(), accountId);
         if (Boolean.TRUE.equals(update.getRecruiting()) && project.getStatus() != ProjectStatus.PREPARING)
             throw new InvalidProjectStateException("공개 모집은 시작 전 프로젝트에서만 가능합니다.");
+        recruitmentEditor.apply(project, update);
         if (update.getTitle() != null) project.setTitle(update.getTitle());
         if (update.getDescription() != null) project.setDescription(update.getDescription());
         if (update.getBackground() != null) project.setBackground(update.getBackground());
