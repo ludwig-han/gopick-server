@@ -21,6 +21,18 @@ public class ProjectProgressService {
         project.setRecruiting(false);
         return ProjectResponse.from(project);
     }
+
+    public ProjectResponse complete(Long accountId, String projectId) {
+        var project = access.lock(accountId, projectId);
+        access.requireLeader(project.getId(), accountId);
+        if (project.getStatus() != ProjectStatus.IN_PROGRESS) {
+            throw new InvalidProjectStateException("진행 중인 프로젝트만 완료할 수 있습니다.");
+        }
+        project.setStatus(ProjectStatus.COMPLETED);
+        project.setRecruiting(false);
+        return ProjectResponse.from(project);
+    }
+
     public ProjectResponse changeStage(Long accountId, String projectId, ProjectStage stage) {
         var project = access.lock(accountId, projectId);
         access.requireMember(project.getId(), accountId);

@@ -18,6 +18,11 @@ public class ProjectProgressController {
     public ProjectResponse start(@PathVariable("projectId") String projectId, HttpServletRequest request) {
         return service.start(requireAccountId(request), projectId);
     }
+    @PostMapping("/complete")
+    public ProjectResponse complete(@PathVariable("projectId") String projectId, HttpServletRequest request) {
+        return service.complete(requireAccountId(request), projectId);
+    }
+
     @PatchMapping("/stage")
     public ProjectResponse stage(@PathVariable("projectId") String projectId,
                                  @Valid @RequestBody ProjectStageRequest update, HttpServletRequest request) {
