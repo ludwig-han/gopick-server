@@ -359,7 +359,7 @@ GET /profiles/{profileId}
 - 본인의 비공개 프로필: 조회 가능
 - 다른 사용자의 비공개 프로필: 조회 불가
 
-Response 예시:
+본인 프로필 조회 Response 예시:
 
 ```json
 {
@@ -367,6 +367,7 @@ Response 예시:
   "name": "김수뭉",
   "major": "컴퓨터과학과",
   "contactPlatform": "디스코드",
+  "contactId": "sumung.k",
   "isPublic": true,
   "teamTendency": "Follow",
   "intro": "Spring Boot 기반 백엔드 개발에 관심이 있습니다.",
@@ -531,6 +532,9 @@ API:
 4. 상세조회 Response를 현재 `ProfileForm`으로 불러오는 방식
 5. 내 프로필 수정 화면에서 기존 `contactValue`를 가져오는 방식
 
+   > 백엔드는 본인 프로필 상세 조회 시 `contactId`를 반환합니다.
+   > 프론트에서 이 값을 수정 화면의 `contactValue`에 반영하는 방식은 확인이 필요합니다.
+
 이 부분은 아직 한쪽에서 임의로 구현하지 말고 프론트/백엔드 간 요청 형식을 확정한 뒤 연결합니다.
 
 ---
@@ -602,7 +606,7 @@ GET /projects?status=PREPARING&recruiting=true
 ]
 ```
 
-응답의 생명주기 필드명은 `status`가 아닌 `lifecycleStatus`입니다. 단계 `stage` 값은 `PLANNING`, `DESIGN`, `IMPLEMENTATION`, `TESTING`, `PRODUCTION`입니다.
+응답의 생명주기 필드명은 `status`가 아닌 `lifecycleStatus`입니다. 단계 `stage`는 설정 전 `null`일 수 있으며, 설정된 값은 `PLANNING`, `DESIGN`, `IMPLEMENTATION`, `TESTING`, `PRODUCTION` 중 하나입니다.
 
 ### 프로젝트 상세 조회
 
@@ -721,7 +725,7 @@ Request 예시:
 
 팀장은 `PATCH /projects/{projectId}`에서 9절의 기본 정보뿐 아니라 `attributes`, `experience`, `recruitments`, `links`도 수정할 수 있습니다. 요청에 포함한 목록은 전체 교체되며 빈 배열은 목록을 비웁니다. 생략한 필드는 유지하고 명시적 `null`은 허용하지 않습니다. 경험 조건은 `{"mode":"NONE"}`으로 해제합니다.
 
-- `attributes`: 프로젝트 속성의 `category`, `value` 목록입니다.
+- `attributes`: 프로젝트 속성의 `category`, `value` 목록입니다. `category`는 `FIELD`, `PURPOSE`, `COLLAB` 중 하나입니다.
 - `experience`: 경험 조건 `mode`, `types`, `fields`입니다.
 - `recruitments`: 역할별 모집 조건입니다. `role`은 중복할 수 없고, `remainingCount`는 0 이상입니다. 기술별 `minLevel`은 1~4입니다.
 - 기술 조건 `techMode`와 경험 조건 `mode`는 `NONE`, `PREFERRED`, `REQUIRED`를 사용합니다. 기술 조건이 `NONE`이면 기술 목록을 비우고, `PREFERRED` 또는 `REQUIRED`이면 하나 이상 입력합니다.
