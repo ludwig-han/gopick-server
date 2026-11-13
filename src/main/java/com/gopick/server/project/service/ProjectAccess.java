@@ -35,8 +35,10 @@ public class ProjectAccess {
     public ProjectMember requireMember(Long projectId, Long accountId) {
         return memberships.findMembership(projectId, accountId).orElseThrow(ProjectAccessDeniedException::new);
     }
-    public void requireLeader(Long projectId, Long accountId) {
-        if (requireMember(projectId, accountId).getMemberType() != ProjectMemberType.LEADER)
+    public ProjectMember requireLeader(Long projectId, Long accountId) {
+        ProjectMember leader = requireMember(projectId, accountId);
+        if (leader.getMemberType() != ProjectMemberType.LEADER)
             throw new ProjectAccessDeniedException();
+        return leader;
     }
 }
