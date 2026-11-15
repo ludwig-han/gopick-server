@@ -3,6 +3,9 @@ package com.gopick.server.project;
 import com.gopick.server.account.domain.Account;
 import com.gopick.server.profile.domain.Profile;
 import com.gopick.server.project.domain.ProjectStatus;
+import com.gopick.server.project.domain.ProjectMember;
+import com.gopick.server.project.domain.ProjectMemberType;
+import com.gopick.server.project.domain.ProjectRole;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -230,11 +233,13 @@ class ParticipationRequestIntegrationTests extends ProjectApiFixture {
     @Test
     void physicalProjectDeletionCascadesThroughParticipationRequestForeignKey() throws Exception {
         var removable = newProject("Removable", ProjectStatus.PREPARING, true);
+        persist(new ProjectMember(removable, leaderProfile, ProjectMemberType.LEADER, ProjectRole.BACKEND));
         long id = requestId(mvc.perform(post("/projects/" + removable.getId() + "/participation-requests")
                 .session(session(outsider)).contentType(MediaType.APPLICATION_JSON).content(APPLY)));
 
         em.flush();
         em.clear();
+        em.createNativeQuery("delete from project_member where project_id = :id").setParameter("id", removable.getId()).executeUpdate();
         em.createNativeQuery("delete from project where id = :id")
                 .setParameter("id", removable.getId()).executeUpdate();
         Object count = em.createNativeQuery("select count(*) from participation_request where id = :id")
