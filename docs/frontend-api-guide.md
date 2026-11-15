@@ -853,6 +853,8 @@ GET /profiles?technology=Java&interest=WEB&preferredRole=BACKEND
 
 `GET /me/notifications`는 로그인한 사용자의 알림을 ID 내림차순으로 반환합니다. 알림이 없으면 `[]`입니다. 화면에서 읽음 여부는 `read`로 확인합니다.
 
+참여 요청 알림의 `requestAvailable`은 현재 보낸 요청 또는 받은 요청 목록에서 해당 요청을 확인할 수 있는지 나타냅니다. `false`이거나 목록 이동 전에 해당 요청이 사라졌다면 “확인할 수 없는 요청입니다”로 안내합니다. 요청과 무관한 알림에서는 `null`입니다. 알림 종류별 이동할 목록은 [알림 API](notification-api.md)를 참고하세요.
+
 알림을 읽음으로 표시하려면 `PATCH /me/notifications/{notificationId}/read`에 목록 항목의 `id`를 넣어 호출합니다. 요청 본문 없이 보내며 성공 시 `204 No Content`를 반환합니다. 두 요청 모두 `credentials: 'include'`로 세션 쿠키를 보냅니다.
 
 응답 예시, 오류 코드, 이벤트별 수신자는 [알림 API](notification-api.md)를 참고하세요.

@@ -48,7 +48,10 @@ public class Notification {
         if (readAt == null) readAt = LocalDateTime.now();
     }
 
-    NotificationResponse response() {
-        return new NotificationResponse(id, type, projectId, projectTitle, requestId, createdAt, readAt != null, readAt);
+    Long requestId() { return requestId; }
+
+    NotificationResponse response(Boolean requestAvailable) {
+        return new NotificationResponse(id, type, projectId, projectTitle, requestId, requestAvailable,
+                createdAt, readAt != null, readAt);
     }
 }

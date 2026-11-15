@@ -29,13 +29,57 @@ class NotificationIntegrationTests extends ProjectApiFixture {
         int requestId = JsonPath.read(response, "$.requestId");
         mvc.perform(get("/me/notifications").session(session(receiver))).andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].type").value(type+"_RECEIVED"))
-                .andExpect(jsonPath("$[0].requestId").value(requestId));
+                .andExpect(jsonPath("$[0].requestId").value(requestId))
+                .andExpect(jsonPath("$[0].requestAvailable").value(true));
         mvc.perform(patch(path()+"/participation-requests/"+requestId).session(session(receiver))
                 .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\""+resolution+"\"}"))
                 .andExpect(status().isOk());
         mvc.perform(get("/me/notifications").session(session(sender))).andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].type").value(resultType));
+                .andExpect(jsonPath("$[0].type").value(resultType))
+                .andExpect(jsonPath("$[0].requestAvailable").value(true));
         mvc.perform(get("/me/notifications").session(session(member))).andExpect(status().isOk()).andExpect(jsonPath("$").isEmpty());
+    }
+    @Test
+    void deletedRequestLeavesNotificationButIsUnavailable() throws Exception {
+        profile(outsider, true);
+        mvc.perform(post(path() + "/participation-requests").session(session(outsider))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"type\":\"APPLY\",\"role\":\"BACKEND\"}"))
+                .andExpect(status().isCreated());
+        mvc.perform(get("/me/notifications").session(session(leader)))
+                .andExpect(jsonPath("$[0].requestAvailable").value(true));
+        mvc.perform(delete("/me").session(session(outsider))).andExpect(status().isNoContent());
+        mvc.perform(get("/me/notifications").session(session(leader)))
+                .andExpect(jsonPath("$[0].type").value("APPLY_RECEIVED"))
+                .andExpect(jsonPath("$[0].requestAvailable").value(false));
+    }
+
+    @Test
+    void applicationNotificationBecomesUnavailableAfterLeaderTransfer() throws Exception {
+        profile(outsider, true);
+        mvc.perform(post(path() + "/participation-requests").session(session(outsider))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"type\":\"APPLY\",\"role\":\"BACKEND\"}"))
+                .andExpect(status().isCreated());
+        mvc.perform(post(path() + "/start").session(session(leader))).andExpect(status().isOk());
+        mvc.perform(patch(path() + "/leader").session(session(leader)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"targetProfileId\":" + memberProfile.getId() + "}"))
+                .andExpect(status().isNoContent());
+        mvc.perform(get("/me/notifications").session(session(leader)))
+                .andExpect(jsonPath("$[0].type").value("APPLY_RECEIVED"))
+                .andExpect(jsonPath("$[0].requestAvailable").value(false));
+        mvc.perform(get("/me/participation-requests/received").session(session(member)))
+                .andExpect(jsonPath("$.length()").value(1));
+    }
+
+    @Test
+    void deletedProjectMakesRequestUnavailable() throws Exception {
+        profile(outsider, true);
+        mvc.perform(post(path() + "/participation-requests").session(session(outsider))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"type\":\"APPLY\",\"role\":\"BACKEND\"}"))
+                .andExpect(status().isCreated());
+        mvc.perform(delete(path()).session(session(leader))).andExpect(status().isNoContent());
+        em.flush(); em.clear();
+        mvc.perform(get("/me/notifications").session(session(leader)))
+                .andExpect(jsonPath("$[0].requestAvailable").value(false));
     }
     @Test
     void readIsPrivateIdempotentAndRequiresAuthentication() throws Exception {
@@ -109,6 +153,7 @@ class NotificationIntegrationTests extends ProjectApiFixture {
         }
         mvc.perform(get("/me/notifications").session(session(member)))
                 .andExpect(jsonPath("$[0].type").value("PROJECT_STAGE_CHANGED"))
+                .andExpect(jsonPath("$[0].requestAvailable").value(org.hamcrest.Matchers.nullValue()))
                 .andExpect(jsonPath("$.length()").value(2));
         mvc.perform(get("/me/notifications").session(session(leader))).andExpect(jsonPath("$").isEmpty());
     }
