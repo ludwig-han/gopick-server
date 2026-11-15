@@ -23,6 +23,16 @@ public class ProjectApiExceptionHandler {
     public ResponseEntity<ErrorResponse> denied(ProjectAccessDeniedException e) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ErrorResponse("PROJECT_ACCESS_DENIED", e.getMessage()));
     }
+    @ExceptionHandler(ParticipationRequestNotFoundException.class)
+    public ResponseEntity<ErrorResponse> missingRequest(ParticipationRequestNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse("PARTICIPATION_REQUEST_NOT_FOUND", e.getMessage()));
+    }
+    @ExceptionHandler(ParticipationRequestConflictException.class)
+    public ResponseEntity<ErrorResponse> requestConflict(ParticipationRequestConflictException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("PARTICIPATION_REQUEST_CONFLICT", e.getMessage()));
+    }
     @ExceptionHandler(InvalidProjectStateException.class)
     public ResponseEntity<ErrorResponse> state(InvalidProjectStateException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse("INVALID_PROJECT_STATE", e.getMessage()));

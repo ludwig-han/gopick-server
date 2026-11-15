@@ -22,11 +22,14 @@ public class ProjectAccess {
         if (accountId == null || !accounts.existsById(accountId)) throw new UnauthenticatedException();
     }
     public Long parseId(String raw) {
+        return parseId(raw, "projectId");
+    }
+    Long parseId(String raw, String field) {
         try {
             long id = Long.parseLong(raw);
             if (id > 0 && raw.matches("[0-9]+")) return id;
         } catch (NumberFormatException ignored) {}
-        throw new ProjectValidationException("projectId", "projectId는 1 이상의 정수여야 합니다.");
+        throw new ProjectValidationException(field, field + "는 1 이상의 정수여야 합니다.");
     }
     public Project lock(Long accountId, String raw) {
         requireAccount(accountId);
