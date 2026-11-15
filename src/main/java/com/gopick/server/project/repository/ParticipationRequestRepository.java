@@ -27,6 +27,9 @@ public interface ParticipationRequestRepository extends JpaRepository<Participat
             """)
     List<Long> findVisibleIds(@Param("accountId") Long accountId, @Param("ids") Collection<Long> ids);
 
+    @Query("select r.participant.account.id from ParticipationRequest r where r.id = :id and r.project.id = :projectId")
+    Optional<Long> findParticipantAccountId(@Param("id") Long id, @Param("projectId") Long projectId);
+
     // The project is locked first. Locking reads see writes committed by the previous holder of that lock.
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<ParticipationRequest> findFirstByProject_IdAndParticipant_IdAndStatus(
