@@ -1,12 +1,14 @@
 package com.gopick.server.project.domain;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.SQLRestriction;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 @Entity
+@SQLRestriction("deleted_at is null")
 public class Project {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -66,6 +68,9 @@ public class Project {
     private LocalDateTime createdAt;
     private LocalDateTime stageUpdatedAt;
     private LocalDateTime statusUpdatedAt;
+
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
 
     protected Project() {}
 
@@ -176,6 +181,10 @@ public class Project {
 
     public ProjectStage getStage() {
         return stage;
+    }
+
+    public void markDeleted() {
+        deletedAt = LocalDateTime.now();
     }
 
     // setter
