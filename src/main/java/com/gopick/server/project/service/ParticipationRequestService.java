@@ -24,6 +24,9 @@ import com.gopick.server.project.repository.ProjectMemberRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import com.gopick.server.account.domain.Account;
 
 import java.util.List;
 
@@ -40,15 +43,19 @@ public class ParticipationRequestService {
     private final ProfileRepository profiles;
     private final NotificationService notifications;
     private final ProjectMembershipRepository memberships;
+    private final EntityManager entityManager;
 
     public ParticipationRequestService(ProjectAccess access, ParticipationRequestRepository requests,
-                                       ProjectMemberRepository members, ProfileRepository profiles, NotificationService notifications, ProjectMembershipRepository memberships) {
+                                       ProjectMemberRepository members, ProfileRepository profiles,
+                                       NotificationService notifications, ProjectMembershipRepository memberships,
+                                       EntityManager entityManager) {
         this.access = access;
         this.requests = requests;
         this.members = members;
         this.profiles = profiles;
         this.notifications = notifications;
         this.memberships = memberships;
+        this.entityManager = entityManager;
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -74,6 +81,7 @@ public class ParticipationRequestService {
             participant = profiles.findById(input.targetProfileId()).orElseThrow(ProfileNotFoundException::new);
         }
 
+        lockParticipant(participant);
         requireNonMember(project, participant);
         if (requests.findFirstByProject_IdAndParticipant_IdAndStatus(
                 project.getId(), participant.getId(), PENDING).isPresent()) {
@@ -100,6 +108,7 @@ public class ParticipationRequestService {
             throw new ParticipationRequestConflictException("이미 처리된 참여 요청입니다.");
         }
         if (status == ACCEPTED) {
+            lockParticipant(request.getParticipant());
             requireActiveProject(project);
             requireNonMember(project, request.getParticipant());
             members.save(new ProjectMember(project, request.getParticipant(), ProjectMemberType.MEMBER, request.getRole()));
@@ -144,6 +153,12 @@ public class ParticipationRequestService {
     private void requireNonMember(Project project, Profile participant) {
         if (members.findByProject_IdAndProfile_Id(project.getId(), participant.getId()).isPresent()) {
             throw new ParticipationRequestConflictException("이미 프로젝트에 참여한 사용자입니다.");
+        }
+    }
+
+    private void lockParticipant(Profile profile) {
+        if (entityManager.find(Account.class, profile.getAccount().getId(), LockModeType.PESSIMISTIC_WRITE) == null) {
+            throw new ProfileNotFoundException();
         }
     }
 

@@ -21,13 +21,13 @@ public interface ProjectMembershipRepository extends Repository<ProjectMember, L
     Optional<ProjectMember> findMembership(@Param("projectId") Long projectId, @Param("accountId") Long accountId);
 
     @Query("""
-            select m from ProjectMember m join fetch m.profile p join fetch p.account
+            select m from ProjectMember m left join fetch m.profile p left join fetch p.account
             where m.project.id = :projectId order by m.id
             """)
     List<ProjectMember> findMembers(@Param("projectId") Long projectId);
 
     @Query("""
-            select m from ProjectMember m join fetch m.profile p join fetch p.account
+            select m from ProjectMember m left join fetch m.profile p left join fetch p.account
             where m.project.id in :projectIds order by m.id
             """)
     List<ProjectMember> findMembersForProjects(@Param("projectIds") List<Long> projectIds);

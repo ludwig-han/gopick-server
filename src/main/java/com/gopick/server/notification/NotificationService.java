@@ -28,6 +28,7 @@ public class NotificationService {
 
     public void sendToOtherMembers(Project project, Long actorId, NotificationType type) {
         memberships.findMembers(project.getId()).stream()
+                .filter(member -> member.getProfile() != null)
                 .map(member -> member.getProfile().getAccount())
                 .filter(account -> !account.getId().equals(actorId))
                 .forEach(account -> send(account, type, project, null));

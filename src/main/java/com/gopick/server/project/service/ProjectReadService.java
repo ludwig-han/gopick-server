@@ -76,6 +76,10 @@ public class ProjectReadService {
 
     private ProjectReadResponse.Member memberResponse(ProjectMember member, Long accountId) {
         var profile = member.getProfile();
+        if (profile == null) {
+            return new ProjectReadResponse.Member(null, "탈퇴한 회원입니다", false,
+                    member.getRole(), member.getMemberType(), member.getJoinedAt());
+        }
         boolean visible = profile.isPublic() || Objects.equals(profile.getAccount().getId(), accountId);
         return new ProjectReadResponse.Member(profile.getId(), visible ? profile.getName() : null,
                 profile.isPublic(), member.getRole(), member.getMemberType(), member.getJoinedAt());
