@@ -76,6 +76,7 @@ http://127.0.0.1:5173
 | 프로필 상세 조회 | `GET` | `/profiles/{profileId}` |
 | 프로필 수정 | `PATCH` | `/profiles/{profileId}` |
 | 프로젝트 목록 조회 | `GET` | `/projects` |
+| 내 프로젝트 목록 | `GET` | `/me/projects` |
 | 프로젝트 상세 조회 | `GET` | `/projects/{projectId}` |
 | 프로젝트 기본 정보 수정 | `PATCH` | `/projects/{projectId}` |
 | 공개 프로필 검색 | `GET` | `/profiles` |
@@ -569,7 +570,7 @@ Validation 에러:
 
 ## 9. 프로젝트 목록 / 상세 조회 / 기본 정보 수정
 
-세 API 모두 로그인 세션이 필요하므로 `credentials: 'include'`를 설정합니다.
+아래 API는 모두 로그인 세션이 필요하므로 `credentials: 'include'`를 설정합니다.
 
 ### 프로젝트 목록 조회
 
@@ -601,12 +602,21 @@ GET /projects?status=PREPARING&recruiting=true
     "recruiting": true,
     "createdAt": "2026-11-11T12:00:00",
     "statusUpdatedAt": "2026-11-11T12:00:00",
-    "stageUpdatedAt": null
+    "stageUpdatedAt": null,
+    "members": [{"profileId": 3, "name": "김수뭉", "isPublic": true, "role": "BACKEND", "authority": "LEADER", "joinedAt": "2026-11-11T12:00:00"}],
+    "recruitments": [{"role": "BACKEND", "remainingCount": 2, "techMode": "REQUIRED", "technologies": [{"technology": "Java", "minLevel": 3}]}],
+    "attributes": [{"category": "FIELD", "value": "WEB"}, {"category": "PURPOSE", "value": "포트폴리오"}]
   }
 ]
 ```
 
 응답의 생명주기 필드명은 `status`가 아닌 `lifecycleStatus`입니다. 단계 `stage`는 설정 전 `null`일 수 있으며, 설정된 값은 `PLANNING`, `DESIGN`, `IMPLEMENTATION`, `TESTING`, `PRODUCTION` 중 하나입니다.
+
+`members`, `recruitments`, `attributes`는 상세 조회와 같은 형식이며 데이터가 없으면 빈 배열입니다. 팀원 수는 `members.length`로 확인할 수 있습니다. 다른 사용자의 비공개 프로필 이름은 `null`입니다.
+
+### 내 프로젝트 목록
+
+`GET /me/projects`는 로그인 계정이 현재 팀원인 프로젝트만 ID 내림차순으로 반환합니다. 각 항목은 위 목록과 같은 형식이며, 추가로 `"myAuthority": "LEADER"` 또는 `"MEMBER"`가 포함됩니다. 참여 중인 프로젝트가 없거나 프로필이 없으면 `[]`이고, 비로그인 또는 유효하지 않은 계정 세션은 `401 UNAUTHENTICATED`입니다.
 
 ### 프로젝트 상세 조회
 
@@ -673,7 +683,7 @@ Request 예시:
 - `recruiting: true`는 `PREPARING` 상태에서만 가능합니다.
 - 이 API로 생명주기, 단계, 팀원 권한을 변경할 수 없습니다.
 
-성공: `200 OK`와 수정 후 프로젝트 기본 정보 객체를 반환합니다. 응답 구조는 목록 배열의 각 항목과 같고 `members`는 포함하지 않습니다.
+성공: `200 OK`와 수정 후 프로젝트 기본 정보 객체를 반환합니다. `members`, `recruitments`, `attributes`는 포함하지 않습니다.
 
 ### 주요 오류
 
@@ -826,7 +836,7 @@ GET /profiles?technology=Java&interest=WEB&preferredRole=BACKEND
 ]
 ```
 
-북마크한 프로필이 비공개로 전환되면 저장은 유지되며 ID, 공개 상태와 고정 표시명만 반환합니다. 스크랩 목록은 9절의 프로젝트 목록과 같은 기본 정보 객체 배열입니다.
+북마크한 프로필이 비공개로 전환되면 저장은 유지되며 ID, 공개 상태와 고정 표시명만 반환합니다. 스크랩 목록은 프로젝트 기본 정보 객체 배열입니다.
 
 | 상황 | 응답 |
 |---|---|

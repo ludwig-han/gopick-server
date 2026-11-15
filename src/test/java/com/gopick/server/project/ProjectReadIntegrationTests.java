@@ -20,6 +20,79 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 class ProjectReadIntegrationTests extends ProjectApiFixture {
     @Test
+    void listQueriesDoNotGrowWithNumberOfProjects() throws Exception {
+        var statistics = em.getEntityManagerFactory().unwrap(org.hibernate.SessionFactory.class).getStatistics();
+        statistics.setStatisticsEnabled(true);
+        try {
+            em.flush(); em.clear(); statistics.clear();
+            mvc.perform(get("/projects").session(session(leader))).andExpect(status().isOk());
+            long singleCount = statistics.getPrepareStatementCount();
+            for (int i = 0; i < 8; i++) {
+                var added = newProject("project-" + i, ProjectStatus.PREPARING, true);
+                added.getAttributes().add(new ProjectAttribute(ProjectAttributeCategory.FIELD, "WEB"));
+                persist(new ProjectMember(added, leaderProfile, ProjectMemberType.LEADER, ProjectRole.BACKEND));
+                persist(new Recruitment(added, ProjectRole.BACKEND, 1, ProjectConditionMode.REQUIRED,
+                        java.util.List.of(new RecruitmentTechnology("Java", 3))));
+            }
+            em.flush(); em.clear(); statistics.clear();
+            mvc.perform(get("/projects").session(session(leader))).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(9));
+            assertThat(statistics.getPrepareStatementCount()).isEqualTo(singleCount);
+        } finally {
+            statistics.setStatisticsEnabled(false);
+        }
+    }
+    @Test
+    void listContainsDetailShapedMembersRecruitmentsAndAttributes() throws Exception {
+        project.getAttributes().add(new ProjectAttribute(ProjectAttributeCategory.FIELD, "WEB"));
+        project.getAttributes().add(new ProjectAttribute(ProjectAttributeCategory.PURPOSE, "portfolio"));
+        persist(new Recruitment(project, ProjectRole.BACKEND, 2, ProjectConditionMode.REQUIRED,
+                java.util.List.of(new RecruitmentTechnology("Java", 3))));
+        var empty = newProject("empty", ProjectStatus.COMPLETED, false);
+        em.flush(); em.clear();
+
+        mvc.perform(get("/projects").session(session(outsider)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].projectId").value(empty.getId().intValue()))
+                .andExpect(jsonPath("$[0].members").isEmpty())
+                .andExpect(jsonPath("$[0].recruitments").isEmpty())
+                .andExpect(jsonPath("$[0].attributes").isEmpty())
+                .andExpect(jsonPath("$[1].members.length()").value(2))
+                .andExpect(jsonPath("$[1].members[0].authority").value("LEADER"))
+                .andExpect(jsonPath("$[1].members[1].name").isEmpty())
+                .andExpect(jsonPath("$[1].recruitments[0].role").value("BACKEND"))
+                .andExpect(jsonPath("$[1].recruitments[0].remainingCount").value(2))
+                .andExpect(jsonPath("$[1].recruitments[0].techMode").value("REQUIRED"))
+                .andExpect(jsonPath("$[1].recruitments[0].technologies[0].technology").value("Java"))
+                .andExpect(jsonPath("$[1].recruitments[0].technologies[0].minLevel").value(3))
+                .andExpect(jsonPath("$[1].attributes[0].category").value("FIELD"))
+                .andExpect(jsonPath("$[1].attributes[1].value").value("portfolio"))
+                .andExpect(jsonPath("$[1].myAuthority").doesNotExist());
+        mvc.perform(get("/projects").session(session(member)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$[1].members[1].name").value("member"));
+    }
+
+    @Test
+    void myProjectsOnlyReturnsMembershipsWithAuthorityAndCardData() throws Exception {
+        var second = newProject("second", ProjectStatus.IN_PROGRESS, false);
+        persist(new ProjectMember(second, leaderProfile, ProjectMemberType.MEMBER, ProjectRole.AI));
+        newProject("unrelated", ProjectStatus.PREPARING, true);
+        em.flush(); em.clear();
+        mvc.perform(get("/me/projects").session(session(leader)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].projectId").value(second.getId().intValue()))
+                .andExpect(jsonPath("$[0].myAuthority").value("MEMBER"))
+                .andExpect(jsonPath("$[1].projectId").value(project.getId().intValue()))
+                .andExpect(jsonPath("$[1].myAuthority").value("LEADER"))
+                .andExpect(jsonPath("$[1].members.length()").value(2))
+                .andExpect(jsonPath("$[1].recruitments").isEmpty())
+                .andExpect(jsonPath("$[1].attributes").isEmpty());
+        mvc.perform(get("/me/projects").session(session(member)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$[0].myAuthority").value("MEMBER"));
+        mvc.perform(get("/me/projects").session(session(outsider)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$").isEmpty());
+    }
+    @Test
     void preparingAndRecruitingFiltersAreCombined() throws Exception {
         newProject("closed", ProjectStatus.PREPARING, false);
         newProject("started", ProjectStatus.IN_PROGRESS, false);
@@ -87,7 +160,7 @@ class ProjectReadIntegrationTests extends ProjectApiFixture {
     @Test
     void bothReadEndpointsRequireValidSession() throws Exception {
         for (boolean stale : new boolean[]{false, true}) {
-            for (String path : new String[]{"/projects", path()}) {
+            for (String path : new String[]{"/projects", "/me/projects", path()}) {
                 var request = get(path);
                 if (stale) { var session = new MockHttpSession(); session.setAttribute("accountId", Long.MAX_VALUE); request.session(session); }
                 mvc.perform(request).andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
