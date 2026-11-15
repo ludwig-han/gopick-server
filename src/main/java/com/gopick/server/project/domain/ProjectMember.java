@@ -18,7 +18,7 @@ public class ProjectMember {
     private Project project;
 
     @ManyToOne
-    @JoinColumn(name = "profile_id", nullable = false)
+    @JoinColumn(name = "profile_id")
     private Profile profile;
 
     @Enumerated(EnumType.STRING)
