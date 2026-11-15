@@ -60,6 +60,10 @@ public class Recruitment {
         return role;
     }
 
+    public Project getProject() {
+        return project;
+    }
+
     public int getRemainingCount() {
         return remainingCount;
     }

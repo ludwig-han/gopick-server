@@ -25,4 +25,16 @@ public interface ProjectMembershipRepository extends Repository<ProjectMember, L
             where m.project.id = :projectId order by m.id
             """)
     List<ProjectMember> findMembers(@Param("projectId") Long projectId);
+
+    @Query("""
+            select m from ProjectMember m join fetch m.profile p join fetch p.account
+            where m.project.id in :projectIds order by m.id
+            """)
+    List<ProjectMember> findMembersForProjects(@Param("projectIds") List<Long> projectIds);
+
+    @Query("""
+            select m from ProjectMember m join fetch m.project project
+            where m.profile.account.id = :accountId order by project.id desc
+            """)
+    List<ProjectMember> findProjectsForAccount(@Param("accountId") Long accountId);
 }

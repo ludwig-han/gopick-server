@@ -15,4 +15,7 @@ public interface ProjectSearchRepository extends Repository<Project, Long> {
             order by p.id desc
             """)
     List<Project> search(@Param("status") ProjectStatus status, @Param("recruiting") Boolean recruiting);
+
+    @Query("select distinct p from Project p left join fetch p.attributes where p.id in :ids")
+    List<Project> loadAttributes(@Param("ids") List<Long> ids);
 }
