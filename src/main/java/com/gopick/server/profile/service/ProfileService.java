@@ -263,7 +263,7 @@ public class ProfileService {
         saveExperiences(profile, profileRequest.getExperiences());
     }
 
-    private void deleteProfileDetails(Long profileId) {
+    public void deleteProfileDetails(Long profileId) {
         List<Long> experienceIds = profileExperienceRepository
                 .findAllByProfile_IdOrderByIdAsc(profileId)
                 .stream()

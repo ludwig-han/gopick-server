@@ -12,6 +12,10 @@ import com.gopick.server.project.repository.ProjectMemberRepository;
 import com.gopick.server.project.repository.ProjectRepository;
 
 import jakarta.transaction.Transactional;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import com.gopick.server.account.domain.Account;
+import com.gopick.server.account.exception.UnauthenticatedException;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -20,17 +24,23 @@ public class ProjectService {
     private final ProjectMemberRepository projectMemberRepository;
     private final ProfileRepository profileRepository;
     private final ProjectRecruitmentEditor recruitmentEditor;
+    private final EntityManager entityManager;
 
     public ProjectService(ProjectRepository projectRepository, ProjectMemberRepository projectMemberRepository,
-                          ProfileRepository profileRepository, ProjectRecruitmentEditor recruitmentEditor) {
+                          ProfileRepository profileRepository, ProjectRecruitmentEditor recruitmentEditor,
+                          EntityManager entityManager) {
         this.projectRepository = projectRepository;
         this.projectMemberRepository = projectMemberRepository;
         this.profileRepository = profileRepository;
         this.recruitmentEditor = recruitmentEditor;
+        this.entityManager = entityManager;
     }
 
     @Transactional
     public ProjectCreateResponse createProject(Long accountId, ProjectCreateRequest projectCreateRequest) {
+        if (accountId == null || entityManager.find(Account.class, accountId, LockModeType.PESSIMISTIC_WRITE) == null) {
+            throw new UnauthenticatedException();
+        }
         // profile check
         Profile profile = profileRepository.findByAccount_Id(accountId)
                 .orElseThrow(ProfileNotFoundException::new);

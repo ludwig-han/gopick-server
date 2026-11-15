@@ -6,6 +6,7 @@ import com.gopick.server.account.dto.CurrentUserResponse;
 import com.gopick.server.account.dto.LoginAccountRequest;
 import com.gopick.server.account.exception.UnauthenticatedException;
 import com.gopick.server.account.service.AccountService;
+import com.gopick.server.account.service.AccountWithdrawalService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
@@ -15,13 +16,25 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import static com.gopick.server.global.SessionUtil.requireAccountId;
 
 @RestController
 public class AccountController {
     private final AccountService accountService;
+    private final AccountWithdrawalService withdrawalService;
 
-    public AccountController(AccountService accountService) {
+    public AccountController(AccountService accountService, AccountWithdrawalService withdrawalService) {
         this.accountService = accountService;
+        this.withdrawalService = withdrawalService;
+    }
+
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> withdraw(HttpServletRequest request) {
+        withdrawalService.withdraw(requireAccountId(request));
+        HttpSession session = request.getSession(false);
+        if (session != null) session.invalidate();
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/accounts")
