@@ -15,7 +15,7 @@ import com.gopick.server.profile.repository.ProfileRepository;
 import com.gopick.server.project.domain.Project;
 import com.gopick.server.project.dto.ProjectResponse;
 import com.gopick.server.project.exception.ProjectNotFoundException;
-import com.gopick.server.project.repository.ProjectRepository;
+import com.gopick.server.project.repository.ProjectLookupRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import org.springframework.stereotype.Service;
@@ -28,12 +28,12 @@ import java.util.List;
 public class BookmarkService {
     private final AccountRepository accounts;
     private final ProfileRepository profiles;
-    private final ProjectRepository projects;
+    private final ProjectLookupRepository projects;
     private final ProfileBookmarkRepository bookmarks;
     private final ProjectScrapRepository scraps;
     private final EntityManager entityManager;
 
-    public BookmarkService(AccountRepository accounts, ProfileRepository profiles, ProjectRepository projects,
+    public BookmarkService(AccountRepository accounts, ProfileRepository profiles, ProjectLookupRepository projects,
                            ProfileBookmarkRepository bookmarks, ProjectScrapRepository scraps,
                            EntityManager entityManager) {
         this.accounts = accounts;
@@ -72,11 +72,10 @@ public class BookmarkService {
 
     public void addProjectScrap(Long accountId, Long projectId) {
         Account owner = lockAccount(accountId);
+        Project project = projects.findForUpdate(projectId).orElseThrow(ProjectNotFoundException::new);
         if (scraps.existsByAccount_IdAndProject_Id(accountId, projectId)) {
             return;
         }
-
-        Project project = projects.findById(projectId).orElseThrow(ProjectNotFoundException::new);
         scraps.save(new ProjectScrap(owner, project));
     }
 
