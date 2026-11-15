@@ -4,10 +4,8 @@ import com.gopick.server.account.domain.Account;
 import com.gopick.server.project.domain.Project;
 import com.gopick.server.project.repository.ProjectMembershipRepository;
 import com.gopick.server.project.service.ProjectAccess;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -42,9 +40,22 @@ public class NotificationService {
     }
 
     @Transactional
-    public void markRead(Long accountId, Long id) {
+    public void markRead(Long accountId, String rawId) {
         access.requireAccount(accountId);
+        long id = parseNotificationId(rawId);
         notifications.findByIdAndRecipient_Id(id, accountId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND)).markRead();
+                .orElseThrow(NotificationNotFoundException::new).markRead();
+    }
+
+    private static long parseNotificationId(String rawId) {
+        try {
+            long id = Long.parseLong(rawId);
+            if (id > 0 && rawId.matches("[0-9]+")) {
+                return id;
+            }
+        } catch (NumberFormatException ignored) {
+            // Invalid and out-of-range IDs use the same validation response.
+        }
+        throw new InvalidNotificationIdException();
     }
 }

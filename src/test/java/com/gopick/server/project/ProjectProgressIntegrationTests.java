@@ -10,6 +10,8 @@ import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.LocalDateTime;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -55,6 +57,31 @@ class ProjectProgressIntegrationTests extends ProjectApiFixture {
                 .andExpect(jsonPath("$.lifecycleStatus").value("IN_PROGRESS"));
         assertThat(project.getStageUpdatedAt()).isNotNull();
     }
+    @Test
+    void patchingTheCurrentStageRefreshesItsTimestampWithoutNotifyingMembers() throws Exception {
+        var previousUpdate = LocalDateTime.of(2000, 1, 1, 0, 0);
+        project.setStatus(ProjectStatus.IN_PROGRESS);
+        project.setRecruiting(false);
+        project.setStage(ProjectStage.DESIGN);
+        em.flush();
+        em.createQuery("update Project p set p.stageUpdatedAt = :previous where p.id = :id")
+                .setParameter("previous", previousUpdate)
+                .setParameter("id", project.getId())
+                .executeUpdate();
+        em.clear();
+
+        mvc.perform(stage("{\"stage\":\"DESIGN\"}").session(session(leader)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stage").value("DESIGN"));
+
+        em.flush();
+        em.clear();
+        assertThat(em.find(Project.class, project.getId()).getStageUpdatedAt()).isAfter(previousUpdate);
+        mvc.perform(get("/me/notifications").session(session(member)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
+    }
+
     @ParameterizedTest
     @EnumSource(value = ProjectStatus.class, names = {"PREPARING", "COMPLETED"})
     void stageChangesRequireInProgress(ProjectStatus state) throws Exception {

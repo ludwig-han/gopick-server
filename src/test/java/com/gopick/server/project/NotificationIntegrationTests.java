@@ -4,6 +4,7 @@ import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
@@ -39,18 +40,51 @@ class NotificationIntegrationTests extends ProjectApiFixture {
     @Test
     void readIsPrivateIdempotentAndRequiresAuthentication() throws Exception {
         profile(outsider, true);
-        mvc.perform(post(path()+"/participation-requests").session(session(outsider)).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"type\":\"APPLY\",\"role\":\"BACKEND\"}")).andExpect(status().isCreated());
-        String body = mvc.perform(get("/me/notifications").session(session(leader))).andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].read").value(false)).andReturn().getResponse().getContentAsString();
-        int id = JsonPath.read(body,"$[0].id");
-        mvc.perform(patch("/me/notifications/"+id+"/read").session(session(outsider))).andExpect(status().isNotFound());
-        mvc.perform(get("/me/notifications")).andExpect(status().isUnauthorized());
-        mvc.perform(patch("/me/notifications/"+id+"/read")).andExpect(status().isUnauthorized());
-        mvc.perform(patch("/me/notifications/"+id+"/read").session(session(leader))).andExpect(status().isNoContent());
-        mvc.perform(patch("/me/notifications/"+id+"/read").session(session(leader))).andExpect(status().isNoContent());
-        mvc.perform(get("/me/notifications").session(session(leader))).andExpect(jsonPath("$[0].read").value(true)).andExpect(jsonPath("$[0].readAt").isString());
+        mvc.perform(post(path() + "/participation-requests").session(session(outsider))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"APPLY\",\"role\":\"BACKEND\"}"))
+                .andExpect(status().isCreated());
+        var leaderSession = session(leader);
+        String listPath = "/me/notifications";
+        String body = mvc.perform(get(listPath).session(leaderSession)).andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].read").value(false))
+                .andExpect(jsonPath("$[0].readAt").value(org.hamcrest.Matchers.nullValue()))
+                .andReturn().getResponse().getContentAsString();
+        int id = JsonPath.read(body, "$[0].id");
+        String readPath = listPath + "/" + id + "/read";
+
+        mvc.perform(patch(readPath).session(session(outsider)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOTIFICATION_NOT_FOUND"));
+        mvc.perform(patch(listPath + "/{notificationId}/read", Long.MAX_VALUE).session(leaderSession))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOTIFICATION_NOT_FOUND"));
+        mvc.perform(get(listPath)).andExpect(status().isUnauthorized());
+        mvc.perform(patch(listPath + "/invalid/read"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+
+        mvc.perform(patch(readPath).session(leaderSession)).andExpect(status().isNoContent());
+        String readBody = mvc.perform(get(listPath).session(leaderSession))
+                .andExpect(jsonPath("$[0].read").value(true))
+                .andExpect(jsonPath("$[0].readAt").isString())
+                .andReturn().getResponse().getContentAsString();
+        String firstReadAt = JsonPath.read(readBody, "$[0].readAt");
+
+        mvc.perform(patch(readPath).session(leaderSession)).andExpect(status().isNoContent());
+        mvc.perform(get(listPath).session(leaderSession))
+                .andExpect(jsonPath("$[0].readAt").value(firstReadAt));
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "-1", "+1", "bad", "9223372036854775808"})
+    void invalidNotificationIdsReturnValidationErrors(String notificationId) throws Exception {
+        mvc.perform(patch("/me/notifications/{notificationId}/read", notificationId).session(session(leader)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.errors.notificationId").isString());
+    }
+
     @Test
     void offerResponseGoesToOriginalSenderAfterLeaderTransfer() throws Exception {
         var candidate = profile(outsider, true);
