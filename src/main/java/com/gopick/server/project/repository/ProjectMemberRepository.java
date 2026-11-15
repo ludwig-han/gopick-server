@@ -10,4 +10,6 @@ import java.util.Optional;
 public interface ProjectMemberRepository extends JpaRepository<ProjectMember, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<ProjectMember> findByProject_IdAndProfile_Id(Long projectId, Long profileId);
+
+    void deleteAllByProject_Id(Long projectId);
 }
