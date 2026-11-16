@@ -6,6 +6,8 @@ import com.gopick.server.profile.repository.ProfileRepository;
 import com.gopick.server.profile.service.ProfileService;
 import com.gopick.server.project.repository.ProjectMemberRepository;
 import com.gopick.server.project.repository.ProjectRepository;
+import com.gopick.server.notification.NotificationService;
+import com.gopick.server.notification.NotificationType;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import org.springframework.http.HttpStatus;
@@ -23,14 +25,16 @@ public class AccountWithdrawalService {
     private final ProfileService profileService;
     private final ProjectMemberRepository members;
     private final ProjectRepository projects;
+    private final NotificationService notifications;
 
     public AccountWithdrawalService(EntityManager em, ProfileRepository profiles, ProfileService profileService,
-                                    ProjectMemberRepository members, ProjectRepository projects) {
+                                    ProjectMemberRepository members, ProjectRepository projects, NotificationService notifications) {
         this.em = em;
         this.profiles = profiles;
         this.profileService = profileService;
         this.members = members;
         this.projects = projects;
+        this.notifications = notifications;
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -61,8 +65,10 @@ public class AccountWithdrawalService {
                 Object[] row = (Object[]) item;
                 if (row[3] == null && "PREPARING".equals(row[1]) && "LEADER".equals(row[2])) {
                     Long projectId = ((Number) row[0]).longValue();
+                    var project = projects.findById(projectId).orElseThrow();
+                    notifications.sendToOtherMembers(project, accountId, NotificationType.PROJECT_DELETED);
                     members.deleteAllByProject_Id(projectId);
-                    projects.delete(projects.findById(projectId).orElseThrow());
+                    projects.delete(project);
                 }
             }
             em.flush();

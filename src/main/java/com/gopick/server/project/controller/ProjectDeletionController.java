@@ -1,5 +1,6 @@
 package com.gopick.server.project.controller;
 
+import com.gopick.server.global.DatabaseDeadlockRetry;
 import com.gopick.server.project.service.ProjectDeletionService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
@@ -22,6 +23,7 @@ public class ProjectDeletionController {
     @DeleteMapping("/projects/{projectId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable("projectId") String projectId, HttpServletRequest request) {
-        service.delete(requireAccountId(request), projectId);
+        Long accountId = requireAccountId(request);
+        DatabaseDeadlockRetry.run(() -> service.delete(accountId, projectId));
     }
 }

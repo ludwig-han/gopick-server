@@ -32,7 +32,7 @@ class NotificationReadConcurrencyTests extends ProjectApiFixture {
     void setUp() {
         transactions.executeWithoutResult(transaction -> {
             super.setUp();
-            notifications.send(leader, NotificationType.PROJECT_STARTED, project, null);
+            notifications.send(leader, NotificationType.PROJECT_STARTED, project, null, null);
         });
     }
 

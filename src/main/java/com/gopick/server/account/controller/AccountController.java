@@ -7,6 +7,7 @@ import com.gopick.server.account.dto.LoginAccountRequest;
 import com.gopick.server.account.exception.UnauthenticatedException;
 import com.gopick.server.account.service.AccountService;
 import com.gopick.server.account.service.AccountWithdrawalService;
+import com.gopick.server.global.DatabaseDeadlockRetry;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
@@ -31,7 +32,8 @@ public class AccountController {
 
     @DeleteMapping("/me")
     public ResponseEntity<Void> withdraw(HttpServletRequest request) {
-        withdrawalService.withdraw(requireAccountId(request));
+        Long accountId = requireAccountId(request);
+        DatabaseDeadlockRetry.run(() -> withdrawalService.withdraw(accountId));
         HttpSession session = request.getSession(false);
         if (session != null) session.invalidate();
         return ResponseEntity.noContent().build();

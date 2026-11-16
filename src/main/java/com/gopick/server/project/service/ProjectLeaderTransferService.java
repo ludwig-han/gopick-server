@@ -48,6 +48,6 @@ public class ProjectLeaderTransferService {
 
         leader.setMemberType(ProjectMemberType.MEMBER);
         target.setMemberType(ProjectMemberType.LEADER);
-        notifications.send(target.getProfile().getAccount(), NotificationType.LEADER_TRANSFERRED, project, null);
+        notifications.send(target.getProfile().getAccount(), NotificationType.LEADER_TRANSFERRED, project, null, accountId);
     }
 }

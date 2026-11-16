@@ -9,6 +9,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.transaction.annotation.Transactional;
+import com.gopick.server.project.domain.ProjectMember;
+import com.gopick.server.project.domain.ProjectMemberType;
+import com.gopick.server.project.domain.ProjectRole;
+import com.gopick.server.project.domain.ProjectStatus;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -29,6 +33,7 @@ class NotificationIntegrationTests extends ProjectApiFixture {
         int requestId = JsonPath.read(response, "$.requestId");
         mvc.perform(get("/me/notifications").session(session(receiver))).andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].type").value(type+"_RECEIVED"))
+                .andExpect(jsonPath("$[0].actorName").value(type.equals("APPLY") ? "outsider" : "leader"))
                 .andExpect(jsonPath("$[0].requestId").value(requestId))
                 .andExpect(jsonPath("$[0].requestAvailable").value(true));
         mvc.perform(patch(path()+"/participation-requests/"+requestId).session(session(receiver))
@@ -36,6 +41,7 @@ class NotificationIntegrationTests extends ProjectApiFixture {
                 .andExpect(status().isOk());
         mvc.perform(get("/me/notifications").session(session(sender))).andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].type").value(resultType))
+                .andExpect(jsonPath("$[0].actorName").value(type.equals("APPLY") ? "leader" : "outsider"))
                 .andExpect(jsonPath("$[0].requestAvailable").value(true));
         mvc.perform(get("/me/notifications").session(session(member))).andExpect(status().isOk()).andExpect(jsonPath("$").isEmpty());
     }
@@ -50,7 +56,88 @@ class NotificationIntegrationTests extends ProjectApiFixture {
         mvc.perform(delete("/me").session(session(outsider))).andExpect(status().isNoContent());
         mvc.perform(get("/me/notifications").session(session(leader)))
                 .andExpect(jsonPath("$[0].type").value("APPLY_RECEIVED"))
+                .andExpect(jsonPath("$[0].actorName").value(org.hamcrest.Matchers.nullValue()))
                 .andExpect(jsonPath("$[0].requestAvailable").value(false));
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = ProjectStatus.class, names = {"PREPARING", "IN_PROGRESS"})
+    void memberLeavingNotifiesOnlyLeader(ProjectStatus state) throws Exception {
+        project.setStatus(state);
+        var other = profile(outsider, true);
+        persist(new ProjectMember(project, other, ProjectMemberType.MEMBER, ProjectRole.AI));
+        mvc.perform(delete(path() + "/members/me").session(session(member))).andExpect(status().isNoContent());
+        em.flush(); em.clear();
+        mvc.perform(get("/me/notifications").session(session(leader)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].type").value("MEMBER_LEFT"))
+                .andExpect(jsonPath("$[0].projectId").value(project.getId().intValue()))
+                .andExpect(jsonPath("$[0].projectTitle").value("GoPick"))
+                .andExpect(jsonPath("$[0].actorName").value(org.hamcrest.Matchers.nullValue()));
+        mvc.perform(get("/me/notifications").session(session(member))).andExpect(jsonPath("$").isEmpty());
+        mvc.perform(get("/me/notifications").session(session(outsider))).andExpect(jsonPath("$").isEmpty());
+    }
+
+    @Test
+    void publicMemberLeavingIncludesNameAndRejectedActionsSendNothing() throws Exception {
+        memberProfile.update(memberProfile.getName(), memberProfile.getMajor(), memberProfile.getContactPlatform(),
+                memberProfile.getContactId(), true, "FOLLOW", "intro");
+        mvc.perform(delete(path()).session(session(member))).andExpect(status().isForbidden());
+        mvc.perform(delete(path() + "/members/me").session(session(outsider))).andExpect(status().isForbidden());
+        mvc.perform(get("/me/notifications").session(session(leader))).andExpect(jsonPath("$").isEmpty());
+        mvc.perform(delete(path() + "/members/me").session(session(member))).andExpect(status().isNoContent());
+        mvc.perform(get("/me/notifications").session(session(leader)))
+                .andExpect(jsonPath("$[0].type").value("MEMBER_LEFT"))
+                .andExpect(jsonPath("$[0].actorName").value("member"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void projectDeletionNotifiesOtherMembersEvenAfterPhysicalDeletion(boolean leaderLeaves) throws Exception {
+        var other = profile(outsider, true);
+        persist(new ProjectMember(project, other, ProjectMemberType.MEMBER, ProjectRole.AI));
+        String endpoint = path() + (leaderLeaves ? "/members/me" : "");
+        mvc.perform(delete(endpoint).session(session(leader))).andExpect(status().isNoContent());
+        em.flush(); em.clear();
+        for (var recipient : new com.gopick.server.account.domain.Account[]{member, outsider}) {
+            mvc.perform(get("/me/notifications").session(session(recipient)))
+                    .andExpect(jsonPath("$.length()").value(1))
+                    .andExpect(jsonPath("$[0].type").value("PROJECT_DELETED"))
+                    .andExpect(jsonPath("$[0].projectTitle").value("GoPick"))
+                    .andExpect(jsonPath("$[0].actorName").value("leader"));
+        }
+        mvc.perform(get("/me/notifications").session(session(leader))).andExpect(jsonPath("$").isEmpty());
+        mvc.perform(delete(endpoint).session(session(leader))).andExpect(status().isNotFound());
+        mvc.perform(get("/me/notifications").session(session(member))).andExpect(jsonPath("$.length()").value(1));
+    }
+
+    @Test
+    void actorNameTracksPrivacyChangesAndSurvivesAsNullAfterAccountWithdrawal() throws Exception {
+        profile(outsider, true);
+        mvc.perform(post(path() + "/participation-requests").session(session(outsider))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"type\":\"APPLY\",\"role\":\"BACKEND\"}"))
+                .andExpect(status().isCreated());
+        mvc.perform(get("/me/notifications").session(session(leader)))
+                .andExpect(jsonPath("$[0].actorName").value("outsider"));
+        var actor = em.createQuery("select p from Profile p where p.account.id = :id", com.gopick.server.profile.domain.Profile.class)
+                .setParameter("id", outsider.getId()).getSingleResult();
+        actor.update(actor.getName(), actor.getMajor(), actor.getContactPlatform(), actor.getContactId(), false, "FOLLOW", "intro");
+        em.flush(); em.clear();
+        mvc.perform(get("/me/notifications").session(session(leader)))
+                .andExpect(jsonPath("$[0].actorName").value(org.hamcrest.Matchers.nullValue()));
+        mvc.perform(delete("/me").session(session(outsider))).andExpect(status().isNoContent());
+        mvc.perform(get("/me/notifications").session(session(leader)))
+                .andExpect(jsonPath("$[0].actorName").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
+    void preparingLeaderAccountWithdrawalNotifiesRemainingMembers() throws Exception {
+        mvc.perform(delete("/me").session(session(leader))).andExpect(status().isNoContent());
+        em.flush(); em.clear();
+        mvc.perform(get("/me/notifications").session(session(member)))
+                .andExpect(jsonPath("$[0].type").value("PROJECT_DELETED"))
+                .andExpect(jsonPath("$[0].projectTitle").value("GoPick"))
+                .andExpect(jsonPath("$[0].actorName").value(org.hamcrest.Matchers.nullValue()));
     }
 
     @Test
@@ -153,6 +240,7 @@ class NotificationIntegrationTests extends ProjectApiFixture {
         }
         mvc.perform(get("/me/notifications").session(session(member)))
                 .andExpect(jsonPath("$[0].type").value("PROJECT_STAGE_CHANGED"))
+                .andExpect(jsonPath("$[0].actorName").value("leader"))
                 .andExpect(jsonPath("$[0].requestAvailable").value(org.hamcrest.Matchers.nullValue()))
                 .andExpect(jsonPath("$.length()").value(2));
         mvc.perform(get("/me/notifications").session(session(leader))).andExpect(jsonPath("$").isEmpty());
@@ -164,6 +252,7 @@ class NotificationIntegrationTests extends ProjectApiFixture {
                 .content("{\"targetProfileId\":"+memberProfile.getId()+"}")).andExpect(status().isNoContent());
         mvc.perform(post(path()+"/complete").session(session(member))).andExpect(status().isOk());
         mvc.perform(get("/me/notifications").session(session(member))).andExpect(jsonPath("$[0].type").value("LEADER_TRANSFERRED"))
+                .andExpect(jsonPath("$[0].actorName").value("leader"))
                 .andExpect(jsonPath("$[1].type").value("PROJECT_STARTED"));
         mvc.perform(get("/me/notifications").session(session(leader))).andExpect(jsonPath("$[0].type").value("PROJECT_COMPLETED"));
         mvc.perform(post(path()+"/complete").session(session(member))).andExpect(status().isConflict());

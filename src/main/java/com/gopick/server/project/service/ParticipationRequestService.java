@@ -92,7 +92,7 @@ public class ParticipationRequestService {
         }
         var saved = requests.save(new ParticipationRequest(project, sender, participant, input.type(), input.role()));
         var recipient = input.type() == APPLY ? currentLeader(project).getProfile().getAccount() : participant.getAccount();
-        notifications.send(recipient, input.type() == APPLY ? NotificationType.APPLY_RECEIVED : NotificationType.OFFER_RECEIVED, project, saved.getId());
+        notifications.send(recipient, input.type() == APPLY ? NotificationType.APPLY_RECEIVED : NotificationType.OFFER_RECEIVED, project, saved.getId(), accountId);
         return ParticipationRequestResponse.from(saved);
     }
 
@@ -126,7 +126,7 @@ public class ParticipationRequestService {
                     ? (status == ACCEPTED ? NotificationType.APPLY_ACCEPTED : NotificationType.APPLY_REJECTED)
                     : (status == ACCEPTED ? NotificationType.OFFER_ACCEPTED : NotificationType.OFFER_REJECTED);
             var recipient = request.getType() == APPLY ? request.getParticipant().getAccount() : request.getSender().getAccount();
-            notifications.send(recipient, type, project, request.getId());
+            notifications.send(recipient, type, project, request.getId(), accountId);
         }
         return ParticipationRequestResponse.from(request);
     }
