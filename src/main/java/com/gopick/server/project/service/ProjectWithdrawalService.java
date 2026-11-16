@@ -4,6 +4,8 @@ import com.gopick.server.project.domain.ProjectMemberType;
 import com.gopick.server.project.exception.InvalidProjectStateException;
 import com.gopick.server.project.repository.ProjectMemberRepository;
 import com.gopick.server.project.repository.ProjectRepository;
+import com.gopick.server.notification.NotificationService;
+import com.gopick.server.notification.NotificationType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,12 +15,14 @@ public class ProjectWithdrawalService {
     private final ProjectAccess access;
     private final ProjectRepository projects;
     private final ProjectMemberRepository members;
+    private final NotificationService notifications;
 
     public ProjectWithdrawalService(ProjectAccess access, ProjectRepository projects,
-                                    ProjectMemberRepository members) {
+                                    ProjectMemberRepository members, NotificationService notifications) {
         this.access = access;
         this.projects = projects;
         this.members = members;
+        this.notifications = notifications;
     }
 
     // Dependent reads must see changes committed while waiting for the project lock.
@@ -31,6 +35,7 @@ public class ProjectWithdrawalService {
         switch (project.getStatus()) {
             case PREPARING -> {
                 if (isLeader) {
+                    notifications.sendToOtherMembers(project, accountId, NotificationType.PROJECT_DELETED);
                     members.deleteAllByProject_Id(project.getId());
                     projects.delete(project);
                     return;
@@ -44,6 +49,7 @@ public class ProjectWithdrawalService {
             case COMPLETED -> throw new InvalidProjectStateException("완료된 프로젝트에서는 하차할 수 없습니다.");
         }
 
+        notifications.sendToLeader(project, accountId, NotificationType.MEMBER_LEFT);
         members.delete(member);
     }
 }

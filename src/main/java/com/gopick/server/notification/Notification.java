@@ -4,6 +4,8 @@ import com.gopick.server.account.domain.Account;
 import jakarta.persistence.*;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 
@@ -20,7 +22,8 @@ public class Notification {
     private Account recipient;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, updatable = false)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(nullable = false, updatable = false, length = 40)
     private NotificationType type;
 
     @Column(nullable = false, updatable = false)
@@ -29,18 +32,21 @@ public class Notification {
     private String projectTitle;
     @Column(updatable = false)
     private Long requestId;
+    @Column(updatable = false)
+    private Long actorAccountId;
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
     private LocalDateTime readAt;
 
     protected Notification() {}
 
-    Notification(Account recipient, NotificationType type, Long projectId, String projectTitle, Long requestId) {
+    Notification(Account recipient, NotificationType type, Long projectId, String projectTitle, Long requestId, Long actorAccountId) {
         this.recipient = recipient;
         this.type = type;
         this.projectId = projectId;
         this.projectTitle = projectTitle;
         this.requestId = requestId;
+        this.actorAccountId = actorAccountId;
         this.createdAt = LocalDateTime.now();
     }
 
@@ -49,9 +55,10 @@ public class Notification {
     }
 
     Long requestId() { return requestId; }
+    Long actorAccountId() { return actorAccountId; }
 
-    NotificationResponse response(Boolean requestAvailable) {
+    NotificationResponse response(Boolean requestAvailable, String actorName) {
         return new NotificationResponse(id, type, projectId, projectTitle, requestId, requestAvailable,
-                createdAt, readAt != null, readAt);
+                actorName, createdAt, readAt != null, readAt);
     }
 }

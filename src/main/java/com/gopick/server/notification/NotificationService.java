@@ -5,6 +5,9 @@ import com.gopick.server.project.domain.Project;
 import com.gopick.server.project.repository.ProjectMembershipRepository;
 import com.gopick.server.project.repository.ParticipationRequestRepository;
 import com.gopick.server.project.service.ProjectAccess;
+import com.gopick.server.profile.domain.Profile;
+import com.gopick.server.profile.repository.ProfileRepository;
+import com.gopick.server.project.domain.ProjectMemberType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -12,6 +15,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.Objects;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class NotificationService {
@@ -19,18 +24,20 @@ public class NotificationService {
     private final ProjectMembershipRepository memberships;
     private final ProjectAccess access;
     private final ParticipationRequestRepository requests;
+    private final ProfileRepository profiles;
 
     public NotificationService(NotificationRepository notifications, ProjectMembershipRepository memberships,
-                               ProjectAccess access, ParticipationRequestRepository requests) {
+                               ProjectAccess access, ParticipationRequestRepository requests, ProfileRepository profiles) {
         this.notifications = notifications;
         this.memberships = memberships;
         this.access = access;
         this.requests = requests;
+        this.profiles = profiles;
     }
 
     // The caller's transaction includes the event and its notifications.
-    public void send(Account recipient, NotificationType type, Project project, Long requestId) {
-        notifications.save(new Notification(recipient, type, project.getId(), project.getTitle(), requestId));
+    public void send(Account recipient, NotificationType type, Project project, Long requestId, Long actorId) {
+        notifications.save(new Notification(recipient, type, project.getId(), project.getTitle(), requestId, actorId));
     }
 
     public void sendToOtherMembers(Project project, Long actorId, NotificationType type) {
@@ -38,7 +45,15 @@ public class NotificationService {
                 .filter(member -> member.getProfile() != null)
                 .map(member -> member.getProfile().getAccount())
                 .filter(account -> !account.getId().equals(actorId))
-                .forEach(account -> send(account, type, project, null));
+                .forEach(account -> send(account, type, project, null, actorId));
+    }
+
+    public void sendToLeader(Project project, Long actorId, NotificationType type) {
+        memberships.findMembers(project.getId()).stream()
+                .filter(member -> member.getMemberType() == ProjectMemberType.LEADER && member.getProfile() != null)
+                .map(member -> member.getProfile().getAccount())
+                .filter(account -> !account.getId().equals(actorId))
+                .forEach(account -> send(account, type, project, null, actorId));
     }
 
     @Transactional(readOnly = true)
@@ -47,7 +62,11 @@ public class NotificationService {
         var results = notifications.findAllByRecipient_IdOrderByIdDesc(accountId);
         var requestIds = results.stream().map(Notification::requestId).filter(Objects::nonNull).distinct().toList();
         Set<Long> visible = requestIds.isEmpty() ? Set.of() : new HashSet<>(requests.findVisibleIds(accountId, requestIds));
-        return results.stream().map(n -> n.response(n.requestId() == null ? null : visible.contains(n.requestId()))).toList();
+        var actorIds = results.stream().map(Notification::actorAccountId).filter(Objects::nonNull).distinct().toList();
+        Map<Long, String> names = actorIds.isEmpty() ? Map.of() : profiles.findPublicByAccountIds(actorIds).stream()
+                .collect(Collectors.toMap(p -> p.getAccount().getId(), Profile::getName));
+        return results.stream().map(n -> n.response(n.requestId() == null ? null : visible.contains(n.requestId()),
+                n.actorAccountId() == null ? null : names.get(n.actorAccountId()))).toList();
     }
 
     @Transactional

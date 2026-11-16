@@ -12,6 +12,9 @@ public interface ProfileRepository extends JpaRepository<Profile, Long> {
     boolean existsByAccount_Id(Long accountId);
     Optional<Profile> findByAccount_Id(Long accountId);
 
+    @Query("select p from Profile p join fetch p.account where p.account.id in :accountIds and p.isPublic = true")
+    List<Profile> findPublicByAccountIds(@Param("accountIds") List<Long> accountIds);
+
     @Query("select p.account.id from Profile p where p.id = :profileId")
     Optional<Long> findAccountId(@Param("profileId") Long profileId);
 

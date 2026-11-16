@@ -1,5 +1,6 @@
 package com.gopick.server.project.controller;
 
+import com.gopick.server.global.DatabaseDeadlockRetry;
 import com.gopick.server.project.service.ProjectWithdrawalService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
@@ -22,6 +23,7 @@ public class ProjectWithdrawalController {
     @DeleteMapping("/projects/{projectId}/members/me")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void withdraw(@PathVariable("projectId") String projectId, HttpServletRequest request) {
-        service.withdraw(requireAccountId(request), projectId);
+        Long accountId = requireAccountId(request);
+        DatabaseDeadlockRetry.run(() -> service.withdraw(accountId, projectId));
     }
 }
