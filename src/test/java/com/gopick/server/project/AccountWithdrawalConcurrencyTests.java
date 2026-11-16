@@ -2,6 +2,8 @@ package com.gopick.server.project;
 
 import com.gopick.server.account.domain.Account;
 import com.gopick.server.account.service.AccountWithdrawalService;
+import com.gopick.server.notification.NotificationService;
+import com.gopick.server.notification.NotificationType;
 import com.gopick.server.project.domain.ProjectStatus;
 import com.gopick.server.project.service.ParticipantAccountLock;
 import jakarta.persistence.LockModeType;
@@ -34,6 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AccountWithdrawalConcurrencyTests extends ProjectApiFixture {
     @Autowired TransactionTemplate transactions;
     @Autowired AccountWithdrawalService withdrawal;
+    @Autowired NotificationService notifications;
     @MockitoSpyBean ParticipantAccountLock accountLock;
 
     @Override
@@ -77,6 +80,11 @@ class AccountWithdrawalConcurrencyTests extends ProjectApiFixture {
             withdrawing.get(15, TimeUnit.SECONDS);
             assertThat(transferring.get(15, TimeUnit.SECONDS)).isEqualTo(400);
             assertLeaderIs(leader.getId());
+            assertThat(notifications.list(leader.getId())).isEmpty();
+            Long count = transactions.execute(tx -> em.createQuery(
+                    "select count(n) from Notification n where n.recipient.id = :id", Long.class)
+                    .setParameter("id", member.getId()).getSingleResult());
+            assertThat(count).isZero();
         }
     }
 
@@ -104,6 +112,8 @@ class AccountWithdrawalConcurrencyTests extends ProjectApiFixture {
                 assertThat(transferring.get(15, TimeUnit.SECONDS)).isEqualTo(204);
                 assertThat(withdrawing.get(15, TimeUnit.SECONDS)).isEqualTo(409);
                 assertLeaderIs(member.getId());
+                assertThat(notifications.list(member.getId())).singleElement()
+                        .extracting(notification -> notification.type()).isEqualTo(NotificationType.LEADER_TRANSFERRED);
             } finally {
                 release.countDown();
             }
@@ -141,6 +151,14 @@ class AccountWithdrawalConcurrencyTests extends ProjectApiFixture {
                 assertThat(accepting.get(15, TimeUnit.SECONDS)).isEqualTo(200);
                 assertThat(withdrawing.get(15, TimeUnit.SECONDS)).isEqualTo(204);
                 assertLeaderIs(leader.getId());
+                assertThat(notifications.list(leader.getId())).singleElement().satisfies(notification -> {
+                    assertThat(notification.type()).isEqualTo(NotificationType.APPLY_RECEIVED);
+                    assertThat(notification.requestAvailable()).isFalse();
+                });
+                Long count = transactions.execute(tx -> em.createQuery(
+                        "select count(n) from Notification n where n.recipient.id = :id", Long.class)
+                        .setParameter("id", outsider.getId()).getSingleResult());
+                assertThat(count).isZero();
             } finally { release.countDown(); }
         }
     }

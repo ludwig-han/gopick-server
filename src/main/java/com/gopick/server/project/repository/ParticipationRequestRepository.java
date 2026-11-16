@@ -10,8 +10,23 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Collection;
 
 public interface ParticipationRequestRepository extends JpaRepository<ParticipationRequest, Long> {
+    // Mirrors the sent/received list visibility rules, restricted to IDs in the caller's notifications.
+    @Query("""
+            select r.id from ParticipationRequest r join r.project project
+            where r.id in :ids and (
+                r.sender.account.id = :accountId
+                or (r.type = OFFER and r.participant.account.id = :accountId)
+                or (r.type = APPLY and exists (
+                    select 1 from ProjectMember m
+                    where m.project = project and m.memberType = LEADER and m.profile.account.id = :accountId
+                ))
+            )
+            """)
+    List<Long> findVisibleIds(@Param("accountId") Long accountId, @Param("ids") Collection<Long> ids);
+
     @Query("select r.participant.account.id from ParticipationRequest r where r.id = :id and r.project.id = :projectId")
     Optional<Long> findParticipantAccountId(@Param("id") Long id, @Param("projectId") Long projectId);
 

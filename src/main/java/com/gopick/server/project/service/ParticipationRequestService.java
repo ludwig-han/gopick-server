@@ -1,5 +1,8 @@
 package com.gopick.server.project.service;
 
+import com.gopick.server.notification.NotificationService;
+import com.gopick.server.notification.NotificationType;
+import com.gopick.server.project.repository.ProjectMembershipRepository;
 import com.gopick.server.profile.domain.Profile;
 import com.gopick.server.profile.exception.ProfileNotFoundException;
 import com.gopick.server.profile.repository.ProfileRepository;
@@ -35,14 +38,20 @@ public class ParticipationRequestService {
     private final ParticipationRequestRepository requests;
     private final ProjectMemberRepository members;
     private final ProfileRepository profiles;
+    private final NotificationService notifications;
+    private final ProjectMembershipRepository memberships;
     private final ParticipantAccountLock accountLock;
 
     public ParticipationRequestService(ProjectAccess access, ParticipationRequestRepository requests,
-                                       ProjectMemberRepository members, ProfileRepository profiles, ParticipantAccountLock accountLock) {
+                                       ProjectMemberRepository members, ProfileRepository profiles,
+                                       NotificationService notifications, ProjectMembershipRepository memberships,
+                                       ParticipantAccountLock accountLock) {
         this.access = access;
         this.requests = requests;
         this.members = members;
         this.profiles = profiles;
+        this.notifications = notifications;
+        this.memberships = memberships;
         this.accountLock = accountLock;
     }
 
@@ -82,6 +91,8 @@ public class ParticipationRequestService {
             throw new ParticipationRequestConflictException("이 프로젝트에 응답 대기 중인 참여 요청이 있습니다.");
         }
         var saved = requests.save(new ParticipationRequest(project, sender, participant, input.type(), input.role()));
+        var recipient = input.type() == APPLY ? currentLeader(project).getProfile().getAccount() : participant.getAccount();
+        notifications.send(recipient, input.type() == APPLY ? NotificationType.APPLY_RECEIVED : NotificationType.OFFER_RECEIVED, project, saved.getId());
         return ParticipationRequestResponse.from(saved);
     }
 
@@ -110,6 +121,13 @@ public class ParticipationRequestService {
             members.save(new ProjectMember(project, request.getParticipant(), ProjectMemberType.MEMBER, request.getRole()));
         }
         request.resolve(status);
+        if (status != CANCELED) {
+            var type = request.getType() == APPLY
+                    ? (status == ACCEPTED ? NotificationType.APPLY_ACCEPTED : NotificationType.APPLY_REJECTED)
+                    : (status == ACCEPTED ? NotificationType.OFFER_ACCEPTED : NotificationType.OFFER_REJECTED);
+            var recipient = request.getType() == APPLY ? request.getParticipant().getAccount() : request.getSender().getAccount();
+            notifications.send(recipient, type, project, request.getId());
+        }
         return ParticipationRequestResponse.from(request);
     }
 
@@ -123,6 +141,10 @@ public class ParticipationRequestService {
     public List<ParticipationRequestResponse> received(Long accountId) {
         access.requireAccount(accountId);
         return requests.findReceived(accountId).stream().map(ParticipationRequestResponse::from).toList();
+    }
+
+    private ProjectMember currentLeader(Project project) {
+        return memberships.findMembers(project.getId()).stream().filter(m -> m.getMemberType() == ProjectMemberType.LEADER).findFirst().orElseThrow();
     }
 
     private void requirePermission(Long accountId, ParticipationRequest request, ParticipationRequestStatus status) {

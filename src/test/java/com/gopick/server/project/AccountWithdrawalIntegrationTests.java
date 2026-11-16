@@ -6,6 +6,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.gopick.server.notification.NotificationService;
+import com.gopick.server.notification.NotificationType;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -14,6 +17,55 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Transactional
 class AccountWithdrawalIntegrationTests extends ProjectApiFixture {
+    @Autowired
+    private NotificationService notifications;
+
+    @Test
+    void withdrawalDeletesRecipientsNotificationsButPreservesOtherUsersNotifications() throws Exception {
+        mvc.perform(post(path() + "/start").session(session(leader))).andExpect(status().isOk());
+        mvc.perform(patch(path() + "/leader").session(session(leader))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"targetProfileId\":" + memberProfile.getId() + "}"))
+                .andExpect(status().isNoContent());
+        mvc.perform(get("/me/notifications").session(session(member)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2));
+
+        // The former leader is now a regular member and can withdraw.
+        mvc.perform(post(path() + "/complete").session(session(member))).andExpect(status().isOk());
+        mvc.perform(get("/me/notifications").session(session(leader)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1));
+        Long removedAccountId = leader.getId();
+        var staleSession = session(leader);
+        mvc.perform(delete("/me").session(session(leader))).andExpect(status().isNoContent());
+        em.flush();
+        em.clear();
+        Number remaining = (Number) em.createNativeQuery("select count(*) from notification where recipient_id = :id")
+                .setParameter("id", removedAccountId).getSingleResult();
+        assertThat(remaining.longValue()).isZero();
+        mvc.perform(get("/me/notifications").session(staleSession)).andExpect(status().isUnauthorized());
+        mvc.perform(get("/me/notifications").session(session(member)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2));
+    }
+
+    @Test
+    void notificationFanoutSkipsAnonymizedCompletedProjectMember() throws Exception {
+        var otherProfile = profile(outsider, true);
+        persist(new ProjectMember(project, otherProfile, ProjectMemberType.MEMBER, ProjectRole.AI));
+        project.setStatus(ProjectStatus.COMPLETED);
+        mvc.perform(delete("/me").session(session(member))).andExpect(status().isNoContent());
+        em.flush();
+        em.clear();
+
+        var storedProject = em.find(Project.class, project.getId());
+        notifications.sendToOtherMembers(storedProject, leader.getId(), NotificationType.PROJECT_COMPLETED);
+        em.flush();
+        mvc.perform(get("/me/notifications").session(session(outsider)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].type").value("PROJECT_COMPLETED"));
+        mvc.perform(get("/me/notifications").session(session(leader)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$").isEmpty());
+    }
+
     @Test
     void completedHistoryIsAnonymousAndCurrentSessionIsInvalidated() throws Exception {
         project.setStatus(ProjectStatus.COMPLETED);

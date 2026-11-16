@@ -1,5 +1,7 @@
 package com.gopick.server.project.service;
 
+import com.gopick.server.notification.NotificationService;
+import com.gopick.server.notification.NotificationType;
 import com.gopick.server.project.domain.ProjectMember;
 import com.gopick.server.project.domain.ProjectMemberType;
 import com.gopick.server.project.domain.ProjectStatus;
@@ -14,13 +16,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class ProjectLeaderTransferService {
     private final ProjectAccess access;
     private final ProjectMemberRepository members;
+    private final NotificationService notifications;
     private final ProfileRepository profiles;
     private final ParticipantAccountLock accountLock;
 
     public ProjectLeaderTransferService(ProjectAccess access, ProjectMemberRepository members,
-                                        ProfileRepository profiles, ParticipantAccountLock accountLock) {
+                                        NotificationService notifications, ProfileRepository profiles,
+                                        ParticipantAccountLock accountLock) {
         this.access = access;
         this.members = members;
+        this.notifications = notifications;
         this.profiles = profiles;
         this.accountLock = accountLock;
     }
@@ -43,5 +48,6 @@ public class ProjectLeaderTransferService {
 
         leader.setMemberType(ProjectMemberType.MEMBER);
         target.setMemberType(ProjectMemberType.LEADER);
+        notifications.send(target.getProfile().getAccount(), NotificationType.LEADER_TRANSFERRED, project, null);
     }
 }
