@@ -72,6 +72,7 @@ http://127.0.0.1:5173
 | 로그인 | `POST` | `/auth/login` |
 | 로그아웃 | `POST` | `/auth/logout` |
 | 현재 사용자 조회 | `GET` | `/me` |
+| 회원 탈퇴 | `DELETE` | `/me` |
 | 프로필 생성 | `POST` | `/profiles` |
 | 프로필 상세 조회 | `GET` | `/profiles/{profileId}` |
 | 프로필 수정 | `PATCH` | `/profiles/{profileId}` |
@@ -85,6 +86,12 @@ http://127.0.0.1:5173
 | 프로젝트 단계 변경 | `PATCH` | `/projects/{projectId}/stage` |
 | 프로젝트 완료 | `POST` | `/projects/{projectId}/complete` |
 | 프로젝트 팀장 위임 | `PATCH` | `/projects/{projectId}/leader` |
+| 프로젝트 하차 | `DELETE` | `/projects/{projectId}/members/me` |
+| 프로젝트 삭제 | `DELETE` | `/projects/{projectId}` |
+| 지원·제안 생성 | `POST` | `/projects/{projectId}/participation-requests` |
+| 지원·제안 처리 | `PATCH` | `/projects/{projectId}/participation-requests/{requestId}` |
+| 보낸 참여 요청 | `GET` | `/me/participation-requests/sent` |
+| 받은 참여 요청 | `GET` | `/me/participation-requests/received` |
 | 프로필 북마크 추가 / 취소 | `POST` / `DELETE` | `/profiles/{targetProfileId}/bookmarks` |
 | 내 북마크 목록 | `GET` | `/me/bookmarked-profiles` |
 | 프로젝트 스크랩 추가 / 취소 | `POST` / `DELETE` | `/projects/{projectId}/scraps` |
@@ -220,6 +227,12 @@ POST /auth/logout
 ```
 
 세션이 이미 없어도 `204`를 반환합니다.
+
+### 회원 탈퇴
+
+`DELETE /me`는 로그인한 사용자의 계정을 탈퇴 처리합니다. 요청 본문 없이 호출하며, 성공하면 `204 No Content`를 반환하고 요청에 사용한 세션을 무효화합니다.
+
+진행 중인 프로젝트의 팀장은 권한을 위임하기 전까지 `409 Conflict`를 받습니다. 기존 MySQL에 배포할 때는 먼저 회원 탈퇴용 DB 마이그레이션을 적용해야 합니다. 데이터 정리 정책과 SQL은 [회원 탈퇴 API](account-withdrawal-api.md)를 참고하세요.
 
 ---
 
@@ -614,7 +627,7 @@ GET /projects?status=PREPARING&recruiting=true
 
 응답의 생명주기 필드명은 `status`가 아닌 `lifecycleStatus`입니다. 단계 `stage`는 설정 전 `null`일 수 있으며, 설정된 값은 `PLANNING`, `DESIGN`, `IMPLEMENTATION`, `TESTING`, `PRODUCTION` 중 하나입니다.
 
-`members`, `recruitments`, `attributes`는 상세 조회와 같은 형식이며 데이터가 없으면 빈 배열입니다. 팀원 수는 `members.length`로 확인할 수 있습니다. 다른 사용자의 비공개 프로필 이름은 `null`입니다.
+`members`, `recruitments`, `attributes`는 상세 조회와 같은 형식이며 데이터가 없으면 빈 배열입니다. 준비 중이거나 진행 중인 프로젝트의 팀원 수는 `members.length`로 확인할 수 있습니다. 완료된 프로젝트의 `members`에는 탈퇴 회원의 참여 이력도 포함됩니다. 팀원 표시 규칙은 아래 상세 조회 설명을 참고하세요.
 
 ### 내 프로젝트 목록
 
@@ -656,7 +669,12 @@ GET /projects/{projectId}
 }
 ```
 
-`role`은 `PM`, `FRONTEND`, `BACKEND`, `AI`, `DESIGN`, `OTHERS` 중 하나이며, `authority`는 `LEADER` 또는 `MEMBER`입니다. 다른 사용자의 비공개 프로필은 `name`이 `null`로 반환됩니다. 계정 정보와 연락처는 반환하지 않습니다.
+`role`은 `PM`, `FRONTEND`, `BACKEND`, `AI`, `DESIGN`, `OTHERS` 중 하나이며, `authority`는 `LEADER` 또는 `MEMBER`입니다. 계정 정보와 연락처는 반환하지 않습니다.
+
+일반 목록, 내 프로젝트 목록, 상세 조회의 `members`에 같은 표시 규칙을 적용합니다.
+
+- 다른 사용자의 비공개 프로필은 `isPublic: false`이고 `name: null`입니다.
+- 완료된 프로젝트에 참여 이력이 남은 탈퇴 회원은 `profileId: null`, `name: "탈퇴한 회원입니다"`, `isPublic: false`로 반환됩니다. 당시 `role`, `authority`, `joinedAt`은 보존됩니다.
 
 ### 프로젝트 기본 정보 수정
 
@@ -858,3 +876,24 @@ GET /profiles?technology=Java&interest=WEB&preferredRole=BACKEND
 알림을 읽음으로 표시하려면 `PATCH /me/notifications/{notificationId}/read`에 목록 항목의 `id`를 넣어 호출합니다. 요청 본문 없이 보내며 성공 시 `204 No Content`를 반환합니다. 두 요청 모두 `credentials: 'include'`로 세션 쿠키를 보냅니다.
 
 응답 예시, 오류 코드, 이벤트별 수신자는 [알림 API](notification-api.md)를 참고하세요.
+
+---
+
+## 15. 프로젝트 하차와 삭제
+
+두 요청 모두 로그인 세션이 필요합니다. 요청 본문 없이 호출하며 성공하면 `204 No Content`를 반환합니다.
+
+- `DELETE /projects/{projectId}/members/me`는 본인의 참여를 종료합니다. 준비 중인 프로젝트에서 팀장이 하차하면 프로젝트를 물리적으로 삭제합니다. 진행 중인 프로젝트의 팀장은 권한을 위임한 뒤 하차할 수 있습니다. 완료된 프로젝트의 하차 요청은 `409 INVALID_PROJECT_STATE`를 반환하고 참여 이력을 보존합니다. [프로젝트 하차 API](project-withdrawal-api.md)
+- `DELETE /projects/{projectId}`는 현재 팀장만 호출할 수 있습니다. 프로젝트와 관련 데이터를 보존하는 소프트 삭제를 적용합니다. 삭제된 프로젝트는 일반 목록, 내 프로젝트 목록, 스크랩 목록에서 제외되며 상세 조회는 `404 PROJECT_NOT_FOUND`를 반환합니다.
+
+---
+
+## 16. 프로젝트 지원과 제안
+
+모든 참여 요청 API는 로그인 세션이 필요합니다.
+
+- `POST /projects/{projectId}/participation-requests`는 `201 Created`와 `PENDING` 요청을 반환합니다. `APPLY`는 준비 중이고 공개 모집이 열린 프로젝트에 본인이 지원할 때 사용합니다. `OFFER`는 준비 중이거나 진행 중인 프로젝트의 팀장이 `targetProfileId`로 상대에게 참여를 제안할 때 사용합니다.
+- `PATCH /projects/{projectId}/participation-requests/{requestId}`는 `ACCEPTED`, `REJECTED`, `CANCELED` 중 하나를 `status`로 보내는 요청입니다. 성공 시 `200 OK`와 처리된 요청을 반환하며, 수락되면 요청에 지정된 역할로 팀원이 등록됩니다.
+- `GET /me/participation-requests/sent`와 `GET /me/participation-requests/received`는 각각 보낸 요청과 받은 요청을 ID 내림차순 배열로 반환합니다. 결과가 없으면 `[]`입니다.
+
+유형별 요청 예시, 상태 처리 권한과 오류 코드는 [프로젝트 참여 요청 API](project-participation-api.md)를 참고하세요.
