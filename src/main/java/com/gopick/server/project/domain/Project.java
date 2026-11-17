@@ -37,6 +37,9 @@ public class Project {
     @Column(nullable = false)
     private Boolean recruiting;
 
+    @Column(columnDefinition = "TEXT")
+    private String post;
+
     @ElementCollection
     @CollectionTable(name = "project_attribute", joinColumns = @JoinColumn(name = "project_id"))
     @OrderColumn(name = "sort_order")
@@ -159,6 +162,10 @@ public class Project {
         return links;
     }
 
+    public String getPost() {
+        return post;
+    }
+
     public void updateExperience(ProjectConditionMode mode, List<String> types, List<String> fields) {
         experienceMode = mode;
         experienceTypes.clear();
@@ -223,5 +230,9 @@ public class Project {
 
     public void setRecruiting(Boolean recruiting) {
         this.recruiting = recruiting;
+    }
+
+    public void setPost(String post) {
+        this.post = post;
     }
 }

@@ -31,6 +31,7 @@ public class ProjectEditService {
         if (update.getWish() != null) project.setWish(update.getWish());
         if (update.getExtra() != null) project.setExtra(update.getExtra());
         if (update.getRecruiting() != null) project.setRecruiting(update.getRecruiting());
+        if (update.getPost() != null) project.setPost(update.getPost());
         return ProjectResponse.from(project);
     }
 }
