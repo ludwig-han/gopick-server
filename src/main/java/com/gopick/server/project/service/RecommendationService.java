@@ -4,80 +4,107 @@ import com.gopick.server.profile.domain.ExperienceAttribute;
 import com.gopick.server.profile.domain.ExperienceAttributeCategory;
 import com.gopick.server.profile.domain.Profile;
 import com.gopick.server.profile.domain.ProfileExperience;
-import com.gopick.server.profile.domain.ProfilePreferenceCategory;
 import com.gopick.server.profile.domain.ProfileTechnology;
+
 import com.gopick.server.profile.repository.ProfileExperienceAttributeRepository;
 import com.gopick.server.profile.repository.ProfileExperienceRepository;
 import com.gopick.server.profile.repository.ProfileInterestRepository;
+import com.gopick.server.profile.repository.ProfilePartRepository;
 import com.gopick.server.profile.repository.ProfilePreferenceRepository;
 import com.gopick.server.profile.repository.ProfileRepository;
 import com.gopick.server.profile.repository.ProfileRoleRepository;
 import com.gopick.server.profile.repository.ProfileTechnologyRepository;
+
 import com.gopick.server.project.domain.Project;
-import com.gopick.server.project.domain.ProjectAttributeCategory;
 import com.gopick.server.project.domain.ProjectConditionMode;
+import com.gopick.server.project.domain.ProjectMember;
+import com.gopick.server.project.domain.ProjectMemberType;
 import com.gopick.server.project.domain.ProjectRole;
 import com.gopick.server.project.domain.Recruitment;
+
+import com.gopick.server.project.dto.RecommendationAiRequest;
+import com.gopick.server.project.dto.RecommendationAiResult;
 import com.gopick.server.project.dto.RecommendationResponse;
+
+import com.gopick.server.project.exception.ProjectAccessDeniedException;
 import com.gopick.server.project.exception.ProjectNotFoundException;
 import com.gopick.server.project.exception.ProjectValidationException;
+
 import com.gopick.server.project.repository.ProjectMembershipRepository;
 import com.gopick.server.project.repository.ProjectRepository;
 import com.gopick.server.project.repository.RecruitmentRepository;
+
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
-@Transactional
 public class RecommendationService {
 
     private final ProjectAccess access;
+
     private final ProjectRepository projects;
     private final RecruitmentRepository recruitments;
-
-    private final ProfileRepository profiles;
     private final ProjectMembershipRepository memberships;
 
-    private final ProfileRoleRepository profileRoles;
+    private final ProfileRepository profiles;
     private final ProfileTechnologyRepository profileTechnologies;
-    private final ProfilePreferenceRepository profilePreferences;
+    private final ProfileRoleRepository profileRoles;
     private final ProfileInterestRepository profileInterests;
-
+    private final ProfilePreferenceRepository profilePreferences;
+    private final ProfilePartRepository profileParts;
     private final ProfileExperienceRepository profileExperiences;
     private final ProfileExperienceAttributeRepository experienceAttributes;
+
+    private final RecommendationAiClient aiClient;
+
+    private final TransactionTemplate readTransaction;
 
     public RecommendationService(
             ProjectAccess access,
             ProjectRepository projects,
             RecruitmentRepository recruitments,
-            ProfileRepository profiles,
             ProjectMembershipRepository memberships,
-            ProfileRoleRepository profileRoles,
+            ProfileRepository profiles,
             ProfileTechnologyRepository profileTechnologies,
-            ProfilePreferenceRepository profilePreferences,
+            ProfileRoleRepository profileRoles,
             ProfileInterestRepository profileInterests,
+            ProfilePreferenceRepository profilePreferences,
+            ProfilePartRepository profileParts,
             ProfileExperienceRepository profileExperiences,
-            ProfileExperienceAttributeRepository experienceAttributes
+            ProfileExperienceAttributeRepository experienceAttributes,
+            RecommendationAiClient aiClient,
+            PlatformTransactionManager transactionManager
     ) {
         this.access = access;
         this.projects = projects;
         this.recruitments = recruitments;
-        this.profiles = profiles;
         this.memberships = memberships;
-        this.profileRoles = profileRoles;
+        this.profiles = profiles;
         this.profileTechnologies = profileTechnologies;
-        this.profilePreferences = profilePreferences;
+        this.profileRoles = profileRoles;
         this.profileInterests = profileInterests;
+        this.profilePreferences = profilePreferences;
+        this.profileParts = profileParts;
         this.profileExperiences = profileExperiences;
         this.experienceAttributes = experienceAttributes;
+        this.aiClient = aiClient;
+
+        this.readTransaction =
+                new TransactionTemplate(transactionManager);
+
+        this.readTransaction.setReadOnly(true);
     }
 
     public RecommendationResponse recommend(
@@ -85,358 +112,556 @@ public class RecommendationService {
             String projectId,
             String role
     ) {
-        // 로그인 확인
-        access.requireAccount(accountId);
-
-        Long parsedProjectId = access.parseId(projectId);
-
-        // 프로젝트 확인
-        Project project = projects.findById(parsedProjectId)
-                .orElseThrow(ProjectNotFoundException::new);
-
-        // 팀장만 추천 요청 가능
-        access.requireLeader(parsedProjectId, accountId);
-
-        ProjectRole parsedRole = parseRole(role);
-
-        // 해당 역할을 실제 모집 중인지 확인
-        Recruitment recruitment = recruitments
-                .findByProject_IdAndRole(parsedProjectId, parsedRole)
-                .orElseThrow(() -> new ProjectValidationException(
-                        "role",
-                        "해당 프로젝트에서 모집하지 않는 역할입니다."
-                ));
-
         /*
-         * 1. 기본 후보
-         * - 공개 프로필
-         * - 이미 팀원인 사람 제외
+         * DB 읽기/필터링은 transaction 안에서 끝낸다.
+         *
+         * AI 호출은 그 다음에 실행해서
+         * AI 기다리는 동안 DB transaction을 잡지 않는다.
          */
-        List<Profile> candidates =
-                findCandidates(parsedProjectId);
-
-        /*
-         * 후보 데이터를 한꺼번에 읽어둔다.
-         */
-        Map<Long, Set<String>> rolesByProfileId =
-                loadRoles(candidates);
-
-        Map<Long, List<ProfileTechnology>> technologiesByProfileId =
-                loadTechnologies(candidates);
-
-        Map<Long, Set<String>> collaborationsByProfileId =
-                loadCollaborationPreferences(candidates);
-
-        Map<Long, Set<String>> interestsByProfileId =
-                loadInterests(candidates);
-
-        Map<Long, List<ProfileExperience>> experiencesByProfileId =
-                loadExperiences(candidates);
-
-        Map<Long, List<ExperienceAttribute>> attributesByExperienceId =
-                loadExperienceAttributes(experiencesByProfileId);
-
-        /*
-         * 2. REQUIRED 기술 필터
-         */
-        if (recruitment.getTechMode() == ProjectConditionMode.REQUIRED) {
-            candidates = candidates.stream()
-                    .filter(profile ->
-                            satisfiesRequiredTechnologies(
-                                    profile,
-                                    recruitment,
-                                    technologiesByProfileId
-                            )
-                    )
-                    .toList();
-        }
-
-        /*
-         * 3. REQUIRED 경험 필터
-         */
-        if (project.getExperienceMode() == ProjectConditionMode.REQUIRED) {
-            candidates = candidates.stream()
-                    .filter(profile ->
-                            matchesExperience(
-                                    profile,
-                                    project,
-                                    experiencesByProfileId,
-                                    attributesByExperienceId
-                            )
-                    )
-                    .toList();
-        }
-
-        /*
-         * 4. 각 후보 점수 + 추천 이유 계산
-         */
-        List<ScoredCandidate> scoredCandidates =
-                candidates.stream()
-                        .map(profile ->
-                                scoreCandidate(
-                                        profile,
-                                        project,
-                                        parsedRole,
-                                        recruitment,
-                                        rolesByProfileId,
-                                        technologiesByProfileId,
-                                        collaborationsByProfileId,
-                                        interestsByProfileId,
-                                        experiencesByProfileId,
-                                        attributesByExperienceId
-                                )
+        PreparedRecommendation prepared =
+                readTransaction.execute(status ->
+                        prepare(
+                                accountId,
+                                projectId,
+                                role
                         )
-                        .sorted(candidateComparator())
-                        .toList();
+                );
+
+        if (prepared == null) {
+            throw new IllegalStateException(
+                    "추천 요청을 준비하지 못했습니다."
+            );
+        }
+
+        if (prepared.request()
+                .candidates()
+                .isEmpty()) {
+
+            return new RecommendationResponse(
+                    prepared.projectId(),
+                    prepared.role(),
+                    List.of()
+            );
+        }
 
         /*
-         * 5. dense rank
+         * 실제 AI 호출
+         */
+        RecommendationAiResult aiResult =
+                aiClient.recommend(
+                        prepared.request()
+                );
+
+        /*
+         * AI 결과를 그대로 믿지 않고 검증한 뒤
+         * 프론트 응답으로 바꾼다.
          */
         List<RecommendationResponse.Item> items =
-                createRankedItems(scoredCandidates);
+                convertAiResult(
+                        prepared.request(),
+                        aiResult
+                );
 
         return new RecommendationResponse(
-                parsedProjectId,
-                parsedRole,
+                prepared.projectId(),
+                prepared.role(),
                 items
         );
     }
 
-    /*
-     * 공개 프로필 중 기존 팀원 제외
-     */
-    private List<Profile> findCandidates(Long projectId) {
+    private PreparedRecommendation prepare(
+            Long accountId,
+            String rawProjectId,
+            String rawRole
+    ) {
+        access.requireAccount(accountId);
 
-        List<Profile> publicProfiles =
+        Long projectId =
+                access.parseId(rawProjectId);
+
+        ProjectRole role =
+                parseRole(rawRole);
+
+        Project project =
+                projects.findById(projectId)
+                        .orElseThrow(
+                                ProjectNotFoundException::new
+                        );
+
+        /*
+         * 추천 API는 읽기 기능이므로
+         * requireLeader()의 FOR UPDATE를 사용하지 않는다.
+         */
+        List<ProjectMember> projectMembers =
+                memberships.findMembers(projectId);
+
+        boolean isLeader =
+                projectMembers.stream()
+                        .anyMatch(member ->
+                                member.getMemberType()
+                                        == ProjectMemberType.LEADER
+                                        &&
+                                        member.getProfile()
+                                                .getAccount()
+                                                .getId()
+                                                .equals(accountId)
+                        );
+
+        if (!isLeader) {
+            throw new ProjectAccessDeniedException();
+        }
+
+        Recruitment recruitment =
+                recruitments
+                        .findByProject_IdAndRole(
+                                projectId,
+                                role
+                        )
+                        .orElseThrow(() ->
+                                new ProjectValidationException(
+                                        "role",
+                                        "해당 프로젝트에서 모집하지 않는 역할입니다."
+                                )
+                        );
+
+        /*
+         * 공개 프로필
+         */
+        List<Profile> candidates =
                 profiles.searchPublicProfiles(
                         null,
                         null,
                         null
                 );
 
+        /*
+         * 이미 팀원인 사람 제외
+         */
         Set<Long> memberProfileIds =
-                memberships.findMembers(projectId)
-                        .stream()
+                projectMembers.stream()
                         .map(member ->
                                 member.getProfile().getId()
                         )
                         .collect(Collectors.toSet());
 
-        return publicProfiles.stream()
-                .filter(profile ->
-                        !memberProfileIds.contains(
-                                profile.getId()
+        candidates =
+                candidates.stream()
+                        .filter(profile ->
+                                !memberProfileIds.contains(
+                                        profile.getId()
+                                )
                         )
-                )
-                .toList();
-    }
+                        .toList();
 
-    /*
-     * profileId -> 희망 역할
-     *
-     * 예:
-     * 3 -> [BACKEND]
-     * 4 -> [BACKEND, AI]
-     */
-    private Map<Long, Set<String>> loadRoles(
-            List<Profile> candidates
-    ) {
-        List<Long> ids = profileIds(candidates);
+        /*
+         * 후보 데이터 일괄 조회
+         */
+        CandidateData data =
+                loadCandidateData(candidates);
 
-        if (ids.isEmpty()) {
-            return Map.of();
+        /*
+         * REQUIRED 기술은 백엔드가 강제한다.
+         */
+        if (recruitment.getTechMode()
+                == ProjectConditionMode.REQUIRED) {
+
+            candidates =
+                    candidates.stream()
+                            .filter(profile ->
+                                    satisfiesRequiredTechnologies(
+                                            profile,
+                                            recruitment,
+                                            data.technologies()
+                                    )
+                            )
+                            .toList();
         }
 
-        return profileRoles
-                .findAllByProfile_IdInOrderByIdAsc(ids)
-                .stream()
-                .collect(Collectors.groupingBy(
-                        role -> role.getProfile().getId(),
-                        Collectors.mapping(
-                                role -> normalize(role.getRole())
-                                        .toUpperCase(Locale.ROOT),
-                                Collectors.toSet()
-                        )
-                ));
-    }
+        /*
+         * REQUIRED 경험도 백엔드가 강제한다.
+         */
+        if (project.getExperienceMode()
+                == ProjectConditionMode.REQUIRED) {
 
-    /*
-     * profileId -> 기술 목록
-     */
-    private Map<Long, List<ProfileTechnology>> loadTechnologies(
-            List<Profile> candidates
-    ) {
-        List<Long> ids = profileIds(candidates);
-
-        if (ids.isEmpty()) {
-            return Map.of();
+            candidates =
+                    candidates.stream()
+                            .filter(profile ->
+                                    matchesExperience(
+                                            profile,
+                                            project,
+                                            data.experiences(),
+                                            data.experienceAttributes()
+                                    )
+                            )
+                            .toList();
         }
 
-        return profileTechnologies
-                .findAllByProfile_IdInOrderByIdAsc(ids)
-                .stream()
-                .collect(Collectors.groupingBy(
-                        tech -> tech.getProfile().getId()
-                ));
+        RecommendationAiRequest request =
+                buildAiRequest(
+                        project,
+                        role,
+                        recruitment,
+                        candidates,
+                        data
+                );
+
+        return new PreparedRecommendation(
+                projectId,
+                role,
+                request
+        );
     }
 
-    /*
-     * profileId -> COLLAB 선호
-     */
-    private Map<Long, Set<String>> loadCollaborationPreferences(
+    private CandidateData loadCandidateData(
             List<Profile> candidates
     ) {
-        List<Long> ids = profileIds(candidates);
+        List<Long> ids =
+                candidates.stream()
+                        .map(Profile::getId)
+                        .toList();
 
         if (ids.isEmpty()) {
-            return Map.of();
+            return CandidateData.empty();
         }
 
-        return profilePreferences
-                .findAllByProfile_IdInOrderByIdAsc(ids)
-                .stream()
-                .filter(preference ->
-                        preference.getCategory()
-                                == ProfilePreferenceCategory.COLLAB
-                )
-                .collect(Collectors.groupingBy(
-                        preference ->
-                                preference.getProfile().getId(),
+        var technologies =
+                profileTechnologies
+                        .findAllByProfile_IdInOrderByIdAsc(ids)
+                        .stream()
+                        .collect(Collectors.groupingBy(
+                                technology ->
+                                        technology.getProfile()
+                                                .getId()
+                        ));
 
-                        Collectors.mapping(
-                                preference ->
-                                        normalize(
-                                                preference.getValue()
-                                        ),
-                                Collectors.toSet()
-                        )
-                ));
-    }
+        var roles =
+                profileRoles
+                        .findAllByProfile_IdInOrderByIdAsc(ids)
+                        .stream()
+                        .collect(Collectors.groupingBy(
+                                role ->
+                                        role.getProfile()
+                                                .getId()
+                        ));
 
-    /*
-     * profileId -> 관심 분야
-     */
-    private Map<Long, Set<String>> loadInterests(
-            List<Profile> candidates
-    ) {
-        List<Long> ids = profileIds(candidates);
-
-        if (ids.isEmpty()) {
-            return Map.of();
-        }
-
-        return profileInterests
-                .findAllByProfile_IdInOrderByIdAsc(ids)
-                .stream()
-                .collect(Collectors.groupingBy(
-                        interest ->
-                                interest.getProfile().getId(),
-
-                        Collectors.mapping(
+        var interests =
+                profileInterests
+                        .findAllByProfile_IdInOrderByIdAsc(ids)
+                        .stream()
+                        .collect(Collectors.groupingBy(
                                 interest ->
-                                        normalize(
-                                                interest.getField()
-                                        ),
-                                Collectors.toSet()
-                        )
-                ));
-    }
+                                        interest.getProfile()
+                                                .getId()
+                        ));
 
-    /*
-     * profileId -> 경험 목록
-     */
-    private Map<Long, List<ProfileExperience>> loadExperiences(
-            List<Profile> candidates
-    ) {
-        List<Long> ids = profileIds(candidates);
+        var preferences =
+                profilePreferences
+                        .findAllByProfile_IdInOrderByIdAsc(ids)
+                        .stream()
+                        .collect(Collectors.groupingBy(
+                                preference ->
+                                        preference.getProfile()
+                                                .getId()
+                        ));
 
-        if (ids.isEmpty()) {
-            return Map.of();
-        }
+        var parts =
+                profileParts
+                        .findAllByProfile_IdInOrderByIdAsc(ids)
+                        .stream()
+                        .collect(Collectors.groupingBy(
+                                part ->
+                                        part.getProfile()
+                                                .getId()
+                        ));
 
-        return profileExperiences
-                .findAllByProfile_IdInOrderByIdAsc(ids)
-                .stream()
-                .collect(Collectors.groupingBy(
-                        experience ->
-                                experience.getProfile().getId()
-                ));
-    }
+        var experiences =
+                profileExperiences
+                        .findAllByProfile_IdInOrderByIdAsc(ids)
+                        .stream()
+                        .collect(Collectors.groupingBy(
+                                experience ->
+                                        experience.getProfile()
+                                                .getId()
+                        ));
 
-    /*
-     * experienceId -> 경험 속성
-     *
-     * TYPE / FIELD / ROLE / TECHNOLOGY
-     */
-    private Map<Long, List<ExperienceAttribute>> loadExperienceAttributes(
-            Map<Long, List<ProfileExperience>> experiencesByProfileId
-    ) {
         List<Long> experienceIds =
-                experiencesByProfileId.values()
+                experiences.values()
                         .stream()
                         .flatMap(List::stream)
                         .map(ProfileExperience::getId)
                         .toList();
 
+        Map<Long, List<ExperienceAttribute>>
+                attributesByExperience;
+
         if (experienceIds.isEmpty()) {
-            return Map.of();
+            attributesByExperience =
+                    Map.of();
+        } else {
+            attributesByExperience =
+                    experienceAttributes
+                            .findAllByExperience_IdInOrderByIdAsc(
+                                    experienceIds
+                            )
+                            .stream()
+                            .collect(Collectors.groupingBy(
+                                    attribute ->
+                                            attribute
+                                                    .getExperience()
+                                                    .getId()
+                            ));
         }
 
-        return experienceAttributes
-                .findAllByExperience_IdInOrderByIdAsc(
-                        experienceIds
-                )
-                .stream()
-                .collect(Collectors.groupingBy(
-                        attribute ->
-                                attribute.getExperience().getId()
-                ));
+        return new CandidateData(
+                technologies,
+                roles,
+                interests,
+                preferences,
+                parts,
+                experiences,
+                attributesByExperience
+        );
     }
 
-    /*
-     * REQUIRED 기술 전부 만족 여부
-     */
+    private RecommendationAiRequest buildAiRequest(
+            Project project,
+            ProjectRole role,
+            Recruitment recruitment,
+            List<Profile> candidates,
+            CandidateData data
+    ) {
+        var projectData =
+                new RecommendationAiRequest.ProjectData(
+                        project.getId(),
+                        role,
+                        project.getTitle(),
+                        project.getDescription(),
+                        project.getBackground(),
+                        project.getGoal(),
+                        project.getWish(),
+
+                        recruitment.getTechMode(),
+
+                        recruitment.getTechnologies()
+                                .stream()
+                                .map(technology ->
+                                        new RecommendationAiRequest
+                                                .TechnologyCondition(
+                                                technology.technology(),
+                                                technology.minLevel()
+                                        )
+                                )
+                                .toList(),
+
+                        project.getExperienceMode(),
+
+                        List.copyOf(
+                                project.getExperienceTypes()
+                        ),
+
+                        List.copyOf(
+                                project.getExperienceFields()
+                        ),
+
+                        project.getAttributes()
+                                .stream()
+                                .map(attribute ->
+                                        new RecommendationAiRequest.Attribute(
+                                                attribute.category(),
+                                                attribute.value()
+                                        )
+                                )
+                                .toList()
+                );
+
+        List<RecommendationAiRequest.Candidate>
+                candidateData =
+                candidates.stream()
+                        .map(profile ->
+                                toAiCandidate(
+                                        profile,
+                                        data
+                                )
+                        )
+                        .toList();
+
+        return new RecommendationAiRequest(
+                projectData,
+                candidateData
+        );
+    }
+
+    private RecommendationAiRequest.Candidate toAiCandidate(
+            Profile profile,
+            CandidateData data
+    ) {
+        Long profileId =
+                profile.getId();
+
+        var technologies =
+                data.technologies()
+                        .getOrDefault(
+                                profileId,
+                                List.of()
+                        )
+                        .stream()
+                        .map(technology ->
+                                new RecommendationAiRequest.Technology(
+                                        technology.getTechnology(),
+                                        technology.getLevel()
+                                )
+                        )
+                        .toList();
+
+        var roles =
+                data.roles()
+                        .getOrDefault(
+                                profileId,
+                                List.of()
+                        )
+                        .stream()
+                        .map(role ->
+                                role.getRole()
+                        )
+                        .toList();
+
+        var interests =
+                data.interests()
+                        .getOrDefault(
+                                profileId,
+                                List.of()
+                        )
+                        .stream()
+                        .map(interest ->
+                                interest.getField()
+                        )
+                        .toList();
+
+        var preferences =
+                data.preferences()
+                        .getOrDefault(
+                                profileId,
+                                List.of()
+                        )
+                        .stream()
+                        .map(preference ->
+                                new RecommendationAiRequest.Preference(
+                                        preference.getCategory(),
+                                        preference.getValue()
+                                )
+                        )
+                        .toList();
+
+        var parts =
+                data.parts()
+                        .getOrDefault(
+                                profileId,
+                                List.of()
+                        )
+                        .stream()
+                        .map(part ->
+                                part.getPart()
+                        )
+                        .toList();
+
+        var experiences =
+                data.experiences()
+                        .getOrDefault(
+                                profileId,
+                                List.of()
+                        )
+                        .stream()
+                        .map(experience -> {
+
+                            var attributes =
+                                    data.experienceAttributes()
+                                            .getOrDefault(
+                                                    experience.getId(),
+                                                    List.of()
+                                            )
+                                            .stream()
+                                            .map(attribute ->
+                                                    new RecommendationAiRequest
+                                                            .ExperienceAttribute(
+                                                            attribute
+                                                                    .getCategory(),
+                                                            attribute
+                                                                    .getValue()
+                                                    )
+                                            )
+                                            .toList();
+
+                            return new RecommendationAiRequest.Experience(
+                                    experience.getDescription(),
+                                    attributes
+                            );
+                        })
+                        .toList();
+
+        return new RecommendationAiRequest.Candidate(
+                profileId,
+                profile.getName(),
+                profile.getMajor(),
+                profile.getTeamTendency(),
+                profile.getIntro(),
+                parts,
+                roles,
+                technologies,
+                interests,
+                preferences,
+                experiences
+        );
+    }
+
     private boolean satisfiesRequiredTechnologies(
             Profile profile,
             Recruitment recruitment,
-            Map<Long, List<ProfileTechnology>> technologiesByProfileId
+            Map<Long, List<ProfileTechnology>>
+                    technologiesByProfile
     ) {
-        List<ProfileTechnology> profileTechs =
-                technologiesByProfileId.getOrDefault(
-                        profile.getId(),
-                        List.of()
-                );
+        List<ProfileTechnology> actual =
+                technologiesByProfile
+                        .getOrDefault(
+                                profile.getId(),
+                                List.of()
+                        );
 
         return recruitment.getTechnologies()
                 .stream()
                 .allMatch(required ->
-                        profileTechs.stream()
-                                .anyMatch(actual ->
-                                        sameTechnology(
-                                                actual.getTechnology(),
-                                                required.technology()
+                        actual.stream()
+                                .anyMatch(technology ->
+                                        normalize(
+                                                technology
+                                                        .getTechnology()
                                         )
+                                                .equals(
+                                                        normalize(
+                                                                required
+                                                                        .technology()
+                                                        )
+                                                )
                                                 &&
-                                                actual.getLevel()
+                                                technology.getLevel()
                                                         >= required.minLevel()
                                 )
                 );
     }
 
-    /*
-     * 경험 조건 만족 여부
-     */
     private boolean matchesExperience(
             Profile profile,
             Project project,
-            Map<Long, List<ProfileExperience>> experiencesByProfileId,
-            Map<Long, List<ExperienceAttribute>> attributesByExperienceId
+            Map<Long, List<ProfileExperience>>
+                    experiencesByProfile,
+            Map<Long, List<ExperienceAttribute>>
+                    attributesByExperience
     ) {
         List<ProfileExperience> experiences =
-                experiencesByProfileId.getOrDefault(
-                        profile.getId(),
-                        List.of()
-                );
+                experiencesByProfile
+                        .getOrDefault(
+                                profile.getId(),
+                                List.of()
+                        );
 
         if (experiences.isEmpty()) {
             return false;
@@ -455,25 +680,20 @@ public class RecommendationService {
                         .collect(Collectors.toSet());
 
         /*
-         * 프로젝트가 경험 여부만 보는 경우:
-         *
-         * type/field 조건이 없으면
+         * 경험 세부조건이 없으면
          * 경험 하나라도 있으면 충족
          */
         if (requiredTypes.isEmpty()
                 && requiredFields.isEmpty()) {
+
             return true;
         }
 
-        /*
-         * 하나의 경험이
-         * type + field 조건을 모두 만족하면 통과
-         */
         return experiences.stream()
                 .anyMatch(experience -> {
 
-                    List<ExperienceAttribute> attributes =
-                            attributesByExperienceId
+                    var attributes =
+                            attributesByExperience
                                     .getOrDefault(
                                             experience.getId(),
                                             List.of()
@@ -521,404 +741,124 @@ public class RecommendationService {
                                                     requiredFields::contains
                                             );
 
-                    return typeMatched && fieldMatched;
+                    return typeMatched
+                            && fieldMatched;
                 });
     }
 
     /*
-     * 실제 후보 하나 평가
+     * AI 결과 검증 + dense rank
      */
-    private ScoredCandidate scoreCandidate(
-            Profile profile,
-            Project project,
-            ProjectRole role,
-            Recruitment recruitment,
-            Map<Long, Set<String>> rolesByProfileId,
-            Map<Long, List<ProfileTechnology>> technologiesByProfileId,
-            Map<Long, Set<String>> collaborationsByProfileId,
-            Map<Long, Set<String>> interestsByProfileId,
-            Map<Long, List<ProfileExperience>> experiencesByProfileId,
-            Map<Long, List<ExperienceAttribute>> attributesByExperienceId
+    private List<RecommendationResponse.Item>
+    convertAiResult(
+            RecommendationAiRequest request,
+            RecommendationAiResult result
     ) {
-        List<RecommendationResponse.Reason> matched =
-                new ArrayList<>();
-
-        List<RecommendationResponse.Reason> unmatched =
-                new ArrayList<>();
-
-        /*
-         * =====================================
-         * STACK
-         * =====================================
-         */
-        int stackScore = 0;
-
-        List<ProfileTechnology> profileTechs =
-                technologiesByProfileId.getOrDefault(
-                        profile.getId(),
-                        List.of()
-                );
-
-        if (recruitment.getTechMode()
-                != ProjectConditionMode.NONE) {
-
-            for (var condition :
-                    recruitment.getTechnologies()) {
-
-                ProfileTechnology matchedTech =
-                        profileTechs.stream()
-                                .filter(actual ->
-                                        sameTechnology(
-                                                actual.getTechnology(),
-                                                condition.technology()
-                                        )
-                                )
-                                .max(
-                                        Comparator.comparingInt(
-                                                ProfileTechnology::getLevel
-                                        )
-                                )
-                                .orElse(null);
-
-                if (matchedTech != null
-                        &&
-                        matchedTech.getLevel()
-                                >= condition.minLevel()) {
-
-                    stackScore +=
-                            matchedTech.getLevel();
-
-                    matched.add(
-                            new RecommendationResponse.Reason(
-                                    RecommendationResponse.Category.STACK,
-                                    matchedTech.getTechnology()
-                                            + " Lv."
-                                            + matchedTech.getLevel()
-                                            + " 보유"
-                            )
-                    );
-
-                } else {
-
-                    unmatched.add(
-                            new RecommendationResponse.Reason(
-                                    RecommendationResponse.Category.STACK,
-                                    condition.technology()
-                                            + " Lv."
-                                            + condition.minLevel()
-                                            + " 이상 선호"
-                            )
-                    );
-                }
-            }
+        if (result == null
+                || result.items() == null) {
+            return List.of();
         }
 
-        /*
-         * =====================================
-         * COLLAB
-         * =====================================
-         */
-        int collabScore = 0;
-
-        Set<String> profileCollaborations =
-                collaborationsByProfileId.getOrDefault(
-                        profile.getId(),
-                        Set.of()
-                );
-
-        List<String> projectCollaborations =
-                project.getAttributes()
+        Map<Long, RecommendationAiRequest.Candidate>
+                candidatesById =
+                request.candidates()
                         .stream()
-                        .filter(attribute ->
-                                attribute.category()
-                                        == ProjectAttributeCategory.COLLAB
-                        )
-                        .map(attribute ->
-                                attribute.value()
-                        )
-                        .toList();
+                        .collect(Collectors.toMap(
+                                RecommendationAiRequest
+                                        .Candidate::profileId,
+                                Function.identity()
+                        ));
 
-        for (String collaboration :
-                projectCollaborations) {
+        /*
+         * AI가 같은 profileId를 두 번 보내더라도
+         * 첫 번째 것만 사용
+         */
+        Map<Long, RecommendationAiResult.Item>
+                uniqueItems =
+                new LinkedHashMap<>();
 
-            if (profileCollaborations.contains(
-                    normalize(collaboration)
+        for (var item : result.items()) {
+
+            if (item == null
+                    || item.profileId() == null) {
+                continue;
+            }
+
+            /*
+             * AI가 존재하지 않는 후보를 만들어냈다면 제거
+             */
+            if (!candidatesById.containsKey(
+                    item.profileId()
             )) {
-                collabScore++;
-
-                matched.add(
-                        new RecommendationResponse.Reason(
-                                RecommendationResponse.Category.COLLAB,
-                                collaboration + " 선호"
-                        )
-                );
-            } else {
-                unmatched.add(
-                        new RecommendationResponse.Reason(
-                                RecommendationResponse.Category.COLLAB,
-                                collaboration + " 선호 아님"
-                        )
-                );
+                continue;
             }
-        }
 
-        /*
-         * =====================================
-         * EXPERIENCE
-         * =====================================
-         */
-        int experienceScore = 0;
-
-        if (project.getExperienceMode()
-                != ProjectConditionMode.NONE) {
-
-            boolean experienceMatched =
-                    matchesExperience(
-                            profile,
-                            project,
-                            experiencesByProfileId,
-                            attributesByExperienceId
-                    );
-
-            if (experienceMatched) {
-                experienceScore = 1;
-
-                matched.add(
-                        new RecommendationResponse.Reason(
-                                RecommendationResponse.Category.EXPERIENCE,
-                                "프로젝트 경험 조건 충족"
-                        )
-                );
-
-            } else {
-                unmatched.add(
-                        new RecommendationResponse.Reason(
-                                RecommendationResponse.Category.EXPERIENCE,
-                                "프로젝트 경험 조건 미충족"
-                        )
-                );
-            }
-        }
-
-        /*
-         * =====================================
-         * ROLE
-         * =====================================
-         */
-        boolean roleMatched =
-                rolesByProfileId
-                        .getOrDefault(
-                                profile.getId(),
-                                Set.of()
-                        )
-                        .contains(role.name());
-
-        int roleScore =
-                roleMatched ? 1 : 0;
-
-        if (roleMatched) {
-            matched.add(
-                    new RecommendationResponse.Reason(
-                            RecommendationResponse.Category.ROLE,
-                            role.name() + " 희망"
-                    )
-            );
-        } else {
-            unmatched.add(
-                    new RecommendationResponse.Reason(
-                            RecommendationResponse.Category.ROLE,
-                            role.name() + " 희망 아님"
-                    )
+            uniqueItems.putIfAbsent(
+                    item.profileId(),
+                    item
             );
         }
 
         /*
-         * =====================================
-         * FIELD
-         * =====================================
+         * score 높은 순.
+         *
+         * Java sorted는 stable이므로
+         * 같은 score면 AI가 준 순서를 유지.
          */
-        int fieldScore = 0;
-
-        Set<String> profileFields =
-                interestsByProfileId.getOrDefault(
-                        profile.getId(),
-                        Set.of()
-                );
-
-        List<String> projectFields =
-                project.getAttributes()
+        List<RecommendationAiResult.Item> sorted =
+                uniqueItems.values()
                         .stream()
-                        .filter(attribute ->
-                                attribute.category()
-                                        == ProjectAttributeCategory.FIELD
-                        )
-                        .map(attribute ->
-                                attribute.value()
+                        .sorted(
+                                Comparator.comparingInt(
+                                        RecommendationAiResult
+                                                .Item::score
+                                ).reversed()
                         )
                         .toList();
 
-        for (String field : projectFields) {
-
-            if (profileFields.contains(
-                    normalize(field)
-            )) {
-                fieldScore++;
-
-                matched.add(
-                        new RecommendationResponse.Reason(
-                                RecommendationResponse.Category.FIELD,
-                                field + " 관심"
-                        )
-                );
-
-            } else {
-                unmatched.add(
-                        new RecommendationResponse.Reason(
-                                RecommendationResponse.Category.FIELD,
-                                field + " 관심 정보 없음"
-                        )
-                );
-            }
-        }
-
-        return new ScoredCandidate(
-                profile,
-                new CandidateScore(
-                        stackScore,
-                        collabScore,
-                        experienceScore,
-                        roleScore,
-                        fieldScore
-                ),
-                matched,
-                unmatched
-        );
-    }
-
-    /*
-     * 추천 우선순위
-     *
-     * 1. STACK
-     * 2. COLLAB
-     * 3. EXPERIENCE
-     * 4. ROLE
-     * 5. FIELD
-     */
-    private Comparator<ScoredCandidate> candidateComparator() {
-
-        return Comparator
-                .comparingInt(
-                        (ScoredCandidate candidate) ->
-                                candidate.score().stack()
-                )
-                .reversed()
-
-                .thenComparing(
-                        Comparator.comparingInt(
-                                (ScoredCandidate candidate) ->
-                                        candidate.score().collab()
-                        ).reversed()
-                )
-
-                .thenComparing(
-                        Comparator.comparingInt(
-                                (ScoredCandidate candidate) ->
-                                        candidate.score().experience()
-                        ).reversed()
-                )
-
-                .thenComparing(
-                        Comparator.comparingInt(
-                                (ScoredCandidate candidate) ->
-                                        candidate.score().role()
-                        ).reversed()
-                )
-
-                .thenComparing(
-                        Comparator.comparingInt(
-                                (ScoredCandidate candidate) ->
-                                        candidate.score().field()
-                        ).reversed()
-                )
-
-                // 완전 동점이면 결과 순서 고정
-                .thenComparing(
-                        candidate ->
-                                candidate.profile().getId()
-                );
-    }
-
-    /*
-     * dense rank
-     *
-     * 점수:
-     * A = 동일
-     * B = 동일
-     * C = 다음 점수
-     *
-     * 결과:
-     * 1, 1, 2
-     */
-    private List<RecommendationResponse.Item> createRankedItems(
-            List<ScoredCandidate> candidates
-    ) {
-        List<RecommendationResponse.Item> items =
+        List<RecommendationResponse.Item> response =
                 new ArrayList<>();
 
-        CandidateScore previousScore = null;
-
+        Integer previousScore = null;
         int rank = 0;
 
-        for (ScoredCandidate candidate :
-                candidates) {
+        for (var item : sorted) {
 
-            if (!candidate.score()
-                    .equals(previousScore)) {
+            if (previousScore == null
+                    || item.score()
+                    != previousScore) {
 
                 rank++;
 
                 previousScore =
-                        candidate.score();
+                        item.score();
             }
 
-            items.add(
+            var candidate =
+                    candidatesById.get(
+                            item.profileId()
+                    );
+
+            response.add(
                     new RecommendationResponse.Item(
-                            candidate.profile().getId(),
-                            candidate.profile().getName(),
+                            item.profileId(),
+                            candidate.name(),
                             rank,
-                            candidate.matched(),
-                            candidate.unmatched(),
-                            null
+
+                            item.matched() == null
+                                    ? List.of()
+                                    : item.matched(),
+
+                            item.unmatched() == null
+                                    ? List.of()
+                                    : item.unmatched(),
+
+                            item.summary()
                     )
             );
         }
 
-        return items;
-    }
-
-    private List<Long> profileIds(
-            List<Profile> candidates
-    ) {
-        return candidates.stream()
-                .map(Profile::getId)
-                .toList();
-    }
-
-    private boolean sameTechnology(
-            String first,
-            String second
-    ) {
-        return normalize(first)
-                .equals(normalize(second));
-    }
-
-    private String normalize(
-            String value
-    ) {
-        return value == null
-                ? ""
-                : value.trim()
-                  .toLowerCase(Locale.ROOT);
+        return response;
     }
 
     private ProjectRole parseRole(
@@ -927,9 +867,10 @@ public class RecommendationService {
         try {
             return ProjectRole.valueOf(
                     role.trim()
-                            .toUpperCase(Locale.ROOT)
+                            .toUpperCase(
+                                    Locale.ROOT
+                            )
             );
-
         } catch (
                 IllegalArgumentException |
                 NullPointerException e
@@ -941,22 +882,42 @@ public class RecommendationService {
         }
     }
 
-    /*
-     * 점수는 프론트에 보내지 않는다.
-     * 내부 순위 계산용.
-     */
-    private record CandidateScore(
-            int stack,
-            int collab,
-            int experience,
-            int role,
-            int field
+    private String normalize(
+            String value
+    ) {
+        return value == null
+                ? ""
+                : value.trim()
+                  .toLowerCase(
+                          Locale.ROOT
+                  );
+    }
+
+    private record PreparedRecommendation(
+            Long projectId,
+            ProjectRole role,
+            RecommendationAiRequest request
     ) {}
 
-    private record ScoredCandidate(
-            Profile profile,
-            CandidateScore score,
-            List<RecommendationResponse.Reason> matched,
-            List<RecommendationResponse.Reason> unmatched
-    ) {}
+    private record CandidateData(
+            Map<Long, List<com.gopick.server.profile.domain.ProfileTechnology>> technologies,
+            Map<Long, List<com.gopick.server.profile.domain.ProfileRole>> roles,
+            Map<Long, List<com.gopick.server.profile.domain.ProfileInterest>> interests,
+            Map<Long, List<com.gopick.server.profile.domain.ProfilePreference>> preferences,
+            Map<Long, List<com.gopick.server.profile.domain.ProfilePart>> parts,
+            Map<Long, List<ProfileExperience>> experiences,
+            Map<Long, List<ExperienceAttribute>> experienceAttributes
+    ) {
+        static CandidateData empty() {
+            return new CandidateData(
+                    Map.of(),
+                    Map.of(),
+                    Map.of(),
+                    Map.of(),
+                    Map.of(),
+                    Map.of(),
+                    Map.of()
+            );
+        }
+    }
 }
