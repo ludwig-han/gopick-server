@@ -8,4 +8,5 @@ import java.util.List;
 public interface ProfilePreferenceRepository extends JpaRepository<ProfilePreference, Long> {
     List<ProfilePreference> findAllByProfile_IdOrderByIdAsc(Long profileId);
     void deleteAllByProfile_Id(Long profileId);
+    List<ProfilePreference> findAllByProfile_IdInOrderByIdAsc(List<Long> profileIds);
 }

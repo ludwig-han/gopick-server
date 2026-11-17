@@ -8,4 +8,5 @@ import java.util.List;
 public interface ProfileExperienceRepository extends JpaRepository<ProfileExperience, Long> {
     List<ProfileExperience> findAllByProfile_IdOrderByIdAsc(Long profileId);
     void deleteAllByProfile_Id(Long profileId);
+    List<ProfileExperience> findAllByProfile_IdInOrderByIdAsc(List<Long> profileIds);
 }
