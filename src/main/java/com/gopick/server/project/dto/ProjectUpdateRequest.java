@@ -22,6 +22,9 @@ public class ProjectUpdateRequest extends ProjectRecruitmentRequest {
     @Size(max = 255)
     private String extra;
     private Boolean recruiting;
+
+    private String post;
+
     public String getTitle() { return title; }
     @JsonSetter(nulls = Nulls.FAIL)
     public void setTitle(String title) { this.title = title; }
@@ -46,5 +49,14 @@ public class ProjectUpdateRequest extends ProjectRecruitmentRequest {
     @JsonAnySetter
     public void rejectUnsupportedField(String field, Object value) {
         throw new ProjectValidationException(field, "현재 지원하지 않는 수정 필드입니다.");
+    }
+
+    public String getPost() {
+        return post;
+    }
+
+    @JsonSetter(nulls = Nulls.FAIL)
+    public void setPost(String post) {
+        this.post = post;
     }
 }

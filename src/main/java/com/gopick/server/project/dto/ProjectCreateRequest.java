@@ -18,6 +18,8 @@ public class ProjectCreateRequest extends ProjectRecruitmentRequest {
 
     private String extra;
 
+    private String post;
+
     @NotNull
     private ProjectRole role;
 
@@ -99,5 +101,13 @@ public class ProjectCreateRequest extends ProjectRecruitmentRequest {
 
     public void setRole(ProjectRole role) {
         this.role = role;
+    }
+
+    public String getPost() {
+        return post;
+    }
+
+    public void setPost(String post) {
+        this.post = post;
     }
 }

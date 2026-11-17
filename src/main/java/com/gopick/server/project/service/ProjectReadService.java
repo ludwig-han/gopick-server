@@ -89,9 +89,27 @@ public class ProjectReadService {
         Project p = projects.findById(access.parseId(projectId)).orElseThrow(ProjectNotFoundException::new);
         var members = memberships.findMembers(p.getId()).stream().map(m -> memberResponse(m, accountId)).toList();
         var recruitment = ProjectRecruitmentDetails.from(p, recruitments.findAllByProject_IdOrderByRoleAsc(p.getId()));
-        return new ProjectReadResponse(p.getId(), p.getTitle(), p.getDescription(), p.getBackground(), p.getGoal(),
-                p.getWish(), p.getExtra(), p.getStatus(), p.getStage(), p.getRecruiting(), p.getCreatedAt(),
-                p.getStatusUpdatedAt(), p.getStageUpdatedAt(), members, recruitment.attributes(),
-                recruitment.experience(), recruitment.recruitments(), recruitment.links());
+        
+        return new ProjectReadResponse(
+                p.getId(),
+                p.getTitle(),
+                p.getDescription(),
+                p.getBackground(),
+                p.getGoal(),
+                p.getWish(),
+                p.getExtra(),
+                p.getPost(),
+                p.getStatus(),
+                p.getStage(),
+                p.getRecruiting(),
+                p.getCreatedAt(),
+                p.getStatusUpdatedAt(),
+                p.getStageUpdatedAt(),
+                members,
+                recruitment.attributes(),
+                recruitment.experience(),
+                recruitment.recruitments(),
+                recruitment.links()
+        );
     }
 }

@@ -6,7 +6,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public record ProjectListResponse(
-        Long projectId, String title, String description, String background, String goal, String wish, String extra,
+        Long projectId, String title, String description, String background, String goal, String wish, String extra, String post,
         ProjectStatus lifecycleStatus, ProjectStage stage, Boolean recruiting, LocalDateTime createdAt,
         LocalDateTime statusUpdatedAt, LocalDateTime stageUpdatedAt,
         List<ProjectReadResponse.Member> members, List<ProjectRecruitmentDetails.RoleRecruitment> recruitments,
@@ -18,7 +18,7 @@ public record ProjectListResponse(
         var attributes = p.getAttributes().stream()
                 .map(a -> new ProjectRecruitmentDetails.Attribute(a.category(), a.value())).toList();
         return new ProjectListResponse(p.getId(), p.getTitle(), p.getDescription(), p.getBackground(), p.getGoal(),
-                p.getWish(), p.getExtra(), p.getStatus(), p.getStage(), p.getRecruiting(), p.getCreatedAt(),
+                p.getWish(), p.getExtra(), p.getPost(), p.getStatus(), p.getStage(), p.getRecruiting(), p.getCreatedAt(),
                 p.getStatusUpdatedAt(), p.getStageUpdatedAt(), members, recruitments, attributes, myAuthority);
     }
 }

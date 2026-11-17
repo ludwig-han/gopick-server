@@ -5,7 +5,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public record ProjectReadResponse(Long projectId, String title, String description, String background,
-                                  String goal, String wish, String extra, ProjectStatus lifecycleStatus,
+                                  String goal, String wish, String extra, String post,ProjectStatus lifecycleStatus,
                                   ProjectStage stage, Boolean recruiting, LocalDateTime createdAt,
                                   LocalDateTime statusUpdatedAt, LocalDateTime stageUpdatedAt, List<Member> members,
                                   List<ProjectRecruitmentDetails.Attribute> attributes,

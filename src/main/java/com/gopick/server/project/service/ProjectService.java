@@ -54,6 +54,9 @@ public class ProjectService {
                 projectCreateRequest.getDescription(),
                 projectCreateRequest.getTitle(),
                 projectCreateRequest.getRecruiting());
+
+        project.setPost(projectCreateRequest.getPost());
+
         recruitmentEditor.apply(project, projectCreateRequest);
 
         // 3. db에 저장 => saveProject
