@@ -21,6 +21,7 @@ import com.gopick.server.project.exception.ProjectAccessDeniedException;
 import com.gopick.server.project.exception.ProjectValidationException;
 import com.gopick.server.project.repository.ParticipationRequestRepository;
 import com.gopick.server.project.repository.ProjectMemberRepository;
+import com.gopick.server.project.repository.RecruitmentRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,11 +42,12 @@ public class ParticipationRequestService {
     private final NotificationService notifications;
     private final ProjectMembershipRepository memberships;
     private final ParticipantAccountLock accountLock;
+    private final RecruitmentRepository recruitments;
 
     public ParticipationRequestService(ProjectAccess access, ParticipationRequestRepository requests,
                                        ProjectMemberRepository members, ProfileRepository profiles,
                                        NotificationService notifications, ProjectMembershipRepository memberships,
-                                       ParticipantAccountLock accountLock) {
+                                       ParticipantAccountLock accountLock, RecruitmentRepository recruitments) {
         this.access = access;
         this.requests = requests;
         this.members = members;
@@ -53,6 +55,7 @@ public class ParticipationRequestService {
         this.notifications = notifications;
         this.memberships = memberships;
         this.accountLock = accountLock;
+        this.recruitments = recruitments;
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -119,6 +122,9 @@ public class ParticipationRequestService {
             requireActiveProject(project);
             requireNonMember(project, request.getParticipant());
             members.save(new ProjectMember(project, request.getParticipant(), ProjectMemberType.MEMBER, request.getRole()));
+            // The project row serializes acceptance and recruitment edits for this role.
+            recruitments.findByProject_IdAndRole(project.getId(), request.getRole())
+                    .ifPresent(recruitment -> recruitment.decreaseRemainingCountIfAvailable());
         }
         request.resolve(status);
         if (status != CANCELED) {
