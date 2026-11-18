@@ -18,6 +18,7 @@ public class ProjectCreateRequest extends ProjectRecruitmentRequest {
 
     private String extra;
 
+    @ProjectPostSize
     private String post;
 
     @NotNull

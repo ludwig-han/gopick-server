@@ -4,23 +4,20 @@ import com.gopick.server.profile.domain.ExperienceAttribute;
 import com.gopick.server.profile.domain.ExperienceAttributeCategory;
 import com.gopick.server.profile.domain.Profile;
 import com.gopick.server.profile.domain.ProfileExperience;
-import com.gopick.server.profile.domain.ProfileTechnology;
 
 import com.gopick.server.profile.repository.ProfileExperienceAttributeRepository;
 import com.gopick.server.profile.repository.ProfileExperienceRepository;
 import com.gopick.server.profile.repository.ProfileInterestRepository;
 import com.gopick.server.profile.repository.ProfilePartRepository;
 import com.gopick.server.profile.repository.ProfilePreferenceRepository;
-import com.gopick.server.profile.repository.ProfileRepository;
 import com.gopick.server.profile.repository.ProfileRoleRepository;
 import com.gopick.server.profile.repository.ProfileTechnologyRepository;
 
 import com.gopick.server.project.domain.Project;
 import com.gopick.server.project.domain.ProjectConditionMode;
-import com.gopick.server.project.domain.ProjectMember;
-import com.gopick.server.project.domain.ProjectMemberType;
 import com.gopick.server.project.domain.ProjectRole;
 import com.gopick.server.project.domain.Recruitment;
+import com.gopick.server.project.domain.RecruitmentTechnology;
 
 import com.gopick.server.project.dto.RecommendationAiRequest;
 import com.gopick.server.project.dto.RecommendationAiResult;
@@ -30,17 +27,19 @@ import com.gopick.server.project.exception.ProjectAccessDeniedException;
 import com.gopick.server.project.exception.ProjectNotFoundException;
 import com.gopick.server.project.exception.ProjectValidationException;
 
-import com.gopick.server.project.repository.ProjectMembershipRepository;
 import com.gopick.server.project.repository.ProjectRepository;
+import com.gopick.server.project.repository.RecommendationCandidateRepository;
+import com.gopick.server.project.repository.RecommendationCandidateRepository.ExperienceEvidence;
+import com.gopick.server.project.repository.RecommendationCandidateRepository.TechnologyEvidence;
 import com.gopick.server.project.repository.RecruitmentRepository;
 
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -51,14 +50,15 @@ import java.util.stream.Collectors;
 
 @Service
 public class RecommendationService {
+    private static final int MAX_CANDIDATES = 20;
+    private static final int ELIGIBILITY_PAGE_SIZE = 100;
 
     private final ProjectAccess access;
 
     private final ProjectRepository projects;
     private final RecruitmentRepository recruitments;
-    private final ProjectMembershipRepository memberships;
+    private final RecommendationCandidateRepository candidateRepository;
 
-    private final ProfileRepository profiles;
     private final ProfileTechnologyRepository profileTechnologies;
     private final ProfileRoleRepository profileRoles;
     private final ProfileInterestRepository profileInterests;
@@ -75,8 +75,7 @@ public class RecommendationService {
             ProjectAccess access,
             ProjectRepository projects,
             RecruitmentRepository recruitments,
-            ProjectMembershipRepository memberships,
-            ProfileRepository profiles,
+            RecommendationCandidateRepository candidateRepository,
             ProfileTechnologyRepository profileTechnologies,
             ProfileRoleRepository profileRoles,
             ProfileInterestRepository profileInterests,
@@ -90,8 +89,7 @@ public class RecommendationService {
         this.access = access;
         this.projects = projects;
         this.recruitments = recruitments;
-        this.memberships = memberships;
-        this.profiles = profiles;
+        this.candidateRepository = candidateRepository;
         this.profileTechnologies = profileTechnologies;
         this.profileRoles = profileRoles;
         this.profileInterests = profileInterests;
@@ -188,26 +186,7 @@ public class RecommendationService {
                                 ProjectNotFoundException::new
                         );
 
-        /*
-         * 추천 API는 읽기 기능이므로
-         * requireLeader()의 FOR UPDATE를 사용하지 않는다.
-         */
-        List<ProjectMember> projectMembers =
-                memberships.findMembers(projectId);
-
-        boolean isLeader =
-                projectMembers.stream()
-                        .anyMatch(member ->
-                                member.getMemberType()
-                                        == ProjectMemberType.LEADER
-                                        &&
-                                        member.getProfile()
-                                                .getAccount()
-                                                .getId()
-                                                .equals(accountId)
-                        );
-
-        if (!isLeader) {
+        if (!candidateRepository.hasLeader(projectId, accountId)) {
             throw new ProjectAccessDeniedException();
         }
 
@@ -224,77 +203,10 @@ public class RecommendationService {
                                 )
                         );
 
-        /*
-         * 공개 프로필
-         */
-        List<Profile> candidates =
-                profiles.searchPublicProfiles(
-                        null,
-                        null,
-                        null
-                );
-
-        /*
-         * 이미 팀원인 사람 제외
-         */
-        Set<Long> memberProfileIds =
-                projectMembers.stream()
-                        .map(member ->
-                                member.getProfile().getId()
-                        )
-                        .collect(Collectors.toSet());
-
-        candidates =
-                candidates.stream()
-                        .filter(profile ->
-                                !memberProfileIds.contains(
-                                        profile.getId()
-                                )
-                        )
-                        .toList();
-
-        /*
-         * 후보 데이터 일괄 조회
-         */
-        CandidateData data =
-                loadCandidateData(candidates);
-
-        /*
-         * REQUIRED 기술은 백엔드가 강제한다.
-         */
-        if (recruitment.getTechMode()
-                == ProjectConditionMode.REQUIRED) {
-
-            candidates =
-                    candidates.stream()
-                            .filter(profile ->
-                                    satisfiesRequiredTechnologies(
-                                            profile,
-                                            recruitment,
-                                            data.technologies()
-                                    )
-                            )
-                            .toList();
-        }
-
-        /*
-         * REQUIRED 경험도 백엔드가 강제한다.
-         */
-        if (project.getExperienceMode()
-                == ProjectConditionMode.REQUIRED) {
-
-            candidates =
-                    candidates.stream()
-                            .filter(profile ->
-                                    matchesExperience(
-                                            profile,
-                                            project,
-                                            data.experiences(),
-                                            data.experienceAttributes()
-                                    )
-                            )
-                            .toList();
-        }
+        List<Long> candidateIds = findEligibleCandidateIds(project, recruitment);
+        List<Profile> candidates = candidateIds.isEmpty()
+                ? List.of() : candidateRepository.findByIdInOrderByIdDesc(candidateIds);
+        CandidateData data = loadCandidateData(candidates);
 
         RecommendationAiRequest request =
                 buildAiRequest(
@@ -453,7 +365,7 @@ public class RecommendationService {
                                 )
                                 .toList(),
 
-                        project.getExperienceMode(),
+                        project.getExperienceMode() == null ? ProjectConditionMode.NONE : project.getExperienceMode(),
 
                         List.copyOf(
                                 project.getExperienceTypes()
@@ -613,137 +525,74 @@ public class RecommendationService {
         );
     }
 
-    private boolean satisfiesRequiredTechnologies(
-            Profile profile,
-            Recruitment recruitment,
-            Map<Long, List<ProfileTechnology>>
-                    technologiesByProfile
-    ) {
-        List<ProfileTechnology> actual =
-                technologiesByProfile
-                        .getOrDefault(
-                                profile.getId(),
-                                List.of()
-                        );
+    private List<Long> findEligibleCandidateIds(Project project, Recruitment recruitment) {
+        var requiredTechnologies = recruitment.getTechMode() == ProjectConditionMode.REQUIRED
+                ? recruitment.getTechnologies() : List.<RecruitmentTechnology>of();
+        boolean experienceRequired = project.getExperienceMode() == ProjectConditionMode.REQUIRED;
+        if (requiredTechnologies.isEmpty() && !experienceRequired) {
+            return candidateRepository.findPublicNonMemberIds(project.getId(), null, PageRequest.of(0, MAX_CANDIDATES));
+        }
 
-        return recruitment.getTechnologies()
-                .stream()
-                .allMatch(required ->
-                        actual.stream()
-                                .anyMatch(technology ->
-                                        normalize(
-                                                technology
-                                                        .getTechnology()
-                                        )
-                                                .equals(
-                                                        normalize(
-                                                                required
-                                                                        .technology()
-                                                        )
-                                                )
-                                                &&
-                                                technology.getLevel()
-                                                        >= required.minLevel()
-                                )
-                );
+        Set<String> requiredTypes = project.getExperienceTypes().stream()
+                .map(this::normalize).collect(Collectors.toSet());
+        Set<String> requiredFields = project.getExperienceFields().stream()
+                .map(this::normalize).collect(Collectors.toSet());
+        var eligible = new ArrayList<Long>(MAX_CANDIDATES);
+        var pageRequest = PageRequest.of(0, ELIGIBILITY_PAGE_SIZE);
+        Long beforeId = null;
+        while (eligible.size() < MAX_CANDIDATES) {
+            var page = candidateRepository.findPublicNonMemberIds(project.getId(), beforeId, pageRequest);
+            if (page.isEmpty()) {
+                break;
+            }
+
+            // Apply the existing Java normalization before choosing the newest eligible profiles.
+            var technologyMatches = filterRequiredTechnologies(page, requiredTechnologies);
+            var experienceMatches = experienceRequired
+                    ? filterRequiredExperience(technologyMatches, requiredTypes, requiredFields) : technologyMatches;
+            eligible.addAll(experienceMatches.stream().limit(MAX_CANDIDATES - eligible.size()).toList());
+
+            if (page.size() < ELIGIBILITY_PAGE_SIZE) {
+                break;
+            }
+            beforeId = page.getLast();
+        }
+        return eligible;
     }
 
-    private boolean matchesExperience(
-            Profile profile,
-            Project project,
-            Map<Long, List<ProfileExperience>>
-                    experiencesByProfile,
-            Map<Long, List<ExperienceAttribute>>
-                    attributesByExperience
-    ) {
-        List<ProfileExperience> experiences =
-                experiencesByProfile
-                        .getOrDefault(
-                                profile.getId(),
-                                List.of()
-                        );
-
-        if (experiences.isEmpty()) {
-            return false;
+    private List<Long> filterRequiredTechnologies(List<Long> candidateIds, List<RecruitmentTechnology> required) {
+        if (required.isEmpty()) {
+            return candidateIds;
         }
 
-        Set<String> requiredTypes =
-                project.getExperienceTypes()
-                        .stream()
-                        .map(this::normalize)
-                        .collect(Collectors.toSet());
+        var technologiesByProfile = candidateRepository.findTechnologyEvidence(candidateIds).stream()
+                .collect(Collectors.groupingBy(TechnologyEvidence::getProfileId,
+                        Collectors.toMap(t -> normalize(t.getName()), TechnologyEvidence::getLevel, Math::max)));
+        return candidateIds.stream().filter(id -> {
+            var levels = technologiesByProfile.getOrDefault(id, Map.of());
+            return required.stream().allMatch(t -> levels.getOrDefault(normalize(t.technology()), 0) >= t.minLevel());
+        }).toList();
+    }
 
-        Set<String> requiredFields =
-                project.getExperienceFields()
-                        .stream()
-                        .map(this::normalize)
-                        .collect(Collectors.toSet());
-
-        /*
-         * 경험 세부조건이 없으면
-         * 경험 하나라도 있으면 충족
-         */
-        if (requiredTypes.isEmpty()
-                && requiredFields.isEmpty()) {
-
-            return true;
+    private List<Long> filterRequiredExperience(List<Long> candidateIds, Set<String> requiredTypes,
+                                                Set<String> requiredFields) {
+        if (candidateIds.isEmpty()) {
+            return candidateIds;
         }
 
-        return experiences.stream()
-                .anyMatch(experience -> {
+        var experiencesByProfile = candidateRepository.findExperienceEvidence(candidateIds).stream()
+                .collect(Collectors.groupingBy(ExperienceEvidence::getProfileId,
+                        Collectors.groupingBy(ExperienceEvidence::getExperienceId)));
+        return candidateIds.stream().filter(id -> experiencesByProfile.getOrDefault(id, Map.of()).values().stream()
+                .anyMatch(evidence -> matchesAttributes(evidence, ExperienceAttributeCategory.TYPE, requiredTypes)
+                        && matchesAttributes(evidence, ExperienceAttributeCategory.FIELD, requiredFields))).toList();
+    }
 
-                    var attributes =
-                            attributesByExperience
-                                    .getOrDefault(
-                                            experience.getId(),
-                                            List.of()
-                                    );
-
-                    Set<String> types =
-                            attributes.stream()
-                                    .filter(attribute ->
-                                            attribute.getCategory()
-                                                    == ExperienceAttributeCategory.TYPE
-                                    )
-                                    .map(attribute ->
-                                            normalize(
-                                                    attribute.getValue()
-                                            )
-                                    )
-                                    .collect(Collectors.toSet());
-
-                    Set<String> fields =
-                            attributes.stream()
-                                    .filter(attribute ->
-                                            attribute.getCategory()
-                                                    == ExperienceAttributeCategory.FIELD
-                                    )
-                                    .map(attribute ->
-                                            normalize(
-                                                    attribute.getValue()
-                                            )
-                                    )
-                                    .collect(Collectors.toSet());
-
-                    boolean typeMatched =
-                            requiredTypes.isEmpty()
-                                    ||
-                                    types.stream()
-                                            .anyMatch(
-                                                    requiredTypes::contains
-                                            );
-
-                    boolean fieldMatched =
-                            requiredFields.isEmpty()
-                                    ||
-                                    fields.stream()
-                                            .anyMatch(
-                                                    requiredFields::contains
-                                            );
-
-                    return typeMatched
-                            && fieldMatched;
-                });
+    private boolean matchesAttributes(List<ExperienceEvidence> evidence, ExperienceAttributeCategory category,
+                                      Set<String> requiredValues) {
+        return requiredValues.isEmpty() || evidence.stream()
+                .anyMatch(item -> item.getCategory() == category
+                        && requiredValues.contains(normalize(item.getAttributeValue())));
     }
 
     /*

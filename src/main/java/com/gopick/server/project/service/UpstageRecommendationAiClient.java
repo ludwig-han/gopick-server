@@ -2,11 +2,10 @@ package com.gopick.server.project.service;
 
 import com.gopick.server.project.dto.RecommendationAiRequest;
 import com.gopick.server.project.dto.RecommendationAiResult;
-import org.springframework.beans.factory.annotation.Value;
+import com.gopick.server.project.exception.AiServiceException;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
@@ -22,125 +21,32 @@ import java.util.stream.Collectors;
 public class UpstageRecommendationAiClient
         implements RecommendationAiClient {
 
-    private final RestClient restClient;
+    private static final int MAX_OUTPUT_TOKENS = 8_192;
+
+    private final UpstageChatClient chatClient;
     private final ObjectMapper objectMapper;
-    private final String model;
 
-    public UpstageRecommendationAiClient(
-            ObjectMapper objectMapper,
-
-            @Value("${upstage.api-key}")
-            String apiKey,
-
-            @Value("${upstage.base-url}")
-            String baseUrl,
-
-            @Value("${upstage.model}")
-            String model
-    ) {
-        if (apiKey == null || apiKey.isBlank()) {
-            throw new IllegalStateException(
-                    "UPSTAGE_API_KEY가 설정되지 않았습니다."
-            );
-        }
-
+    public UpstageRecommendationAiClient(UpstageChatClient chatClient, ObjectMapper objectMapper) {
+        this.chatClient = chatClient;
         this.objectMapper = objectMapper;
-        this.model = model;
-
-        this.restClient = RestClient.builder()
-                .baseUrl(baseUrl)
-                .defaultHeader(
-                        "Authorization",
-                        "Bearer " + apiKey
-                )
-                .build();
     }
 
     @Override
-    public RecommendationAiResult recommend(
-            RecommendationAiRequest request
-    ) {
+    public RecommendationAiResult recommend(RecommendationAiRequest request) {
+        String userPrompt = """
+                다음은 프로젝트 정보와 추천 가능한 후보 목록입니다.
+                제공된 데이터만 사용해서 모든 후보를 비교하고 추천 결과를 생성하세요.
+
+                INPUT:
+                %s
+                """.formatted(objectMapper.writeValueAsString(request));
+        String content = chatClient.complete(systemPrompt(), userPrompt, 0.2, MAX_OUTPUT_TOKENS, responseFormat());
         try {
-            String candidateJson =
-                    objectMapper.writeValueAsString(request);
-
-            Map<String, Object> body =
-                    Map.of(
-                            "model", model,
-
-                            "messages", List.of(
-                                    Map.of(
-                                            "role", "system",
-                                            "content", systemPrompt()
-                                    ),
-                                    Map.of(
-                                            "role", "user",
-                                            "content",
-                                            """
-                                            다음은 프로젝트 정보와 추천 가능한 후보 목록입니다.
-
-                                            반드시 제공된 데이터만 사용해서
-                                            모든 후보를 비교하고 추천 결과를 생성하세요.
-
-                                            INPUT:
-                                            %s
-                                            """.formatted(candidateJson)
-                                    )
-                            ),
-
-                            "temperature", 0.2,
-
-                            "response_format",
-                            responseFormat()
-                    );
-
-            UpstageChatResponse response =
-                    restClient.post()
-                            .uri("/chat/completions")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .body(body)
-                            .retrieve()
-                            .body(UpstageChatResponse.class);
-
-            if (response == null
-                    || response.choices() == null
-                    || response.choices().isEmpty()
-                    || response.choices().getFirst().message() == null
-                    || response.choices()
-                    .getFirst()
-                    .message()
-                    .content() == null) {
-
-                throw new IllegalStateException(
-                        "Upstage 응답에 추천 결과가 없습니다."
-                );
-            }
-
-            String content =
-                    response.choices()
-                            .getFirst()
-                            .message()
-                            .content();
-
-            RecommendationAiResult result =
-                    objectMapper.readValue(
-                            content,
-                            RecommendationAiResult.class
-                    );
-
-            validateResult(
-                    request,
-                    result
-            );
-
+            RecommendationAiResult result = objectMapper.readValue(content, RecommendationAiResult.class);
+            validateResult(request, result);
             return result;
-
-        } catch (Exception e) {
-
-            throw new IllegalStateException(
-                    "Upstage 추천 API 호출에 실패했습니다.",
-                    e
-            );
+        } catch (JacksonException | IllegalStateException e) {
+            throw AiServiceException.upstreamFailure(e);
         }
     }
 
@@ -372,8 +278,8 @@ public class UpstageRecommendationAiClient
             RecommendationAiRequest request,
             RecommendationAiResult result
     ) {
-        if (result == null
-                || result.items() == null) {
+        if (result == null || result.items() == null || result.items().stream()
+                .anyMatch(item -> item == null || item.profileId() == null)) {
 
             throw new IllegalStateException(
                     "AI 추천 결과가 비어 있습니다."
@@ -444,20 +350,4 @@ public class UpstageRecommendationAiClient
             );
         }
     }
-
-    /*
-     * Upstage Chat Completions 응답에서
-     * 필요한 부분만 받는다.
-     */
-    private record UpstageChatResponse(
-            List<Choice> choices
-    ) {}
-
-    private record Choice(
-            Message message
-    ) {}
-
-    private record Message(
-            String content
-    ) {}
 }
