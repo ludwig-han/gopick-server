@@ -4,7 +4,11 @@ import com.gopick.server.project.dto.RecruitPostDraftRequest;
 import com.gopick.server.project.dto.RecruitPostDraftResponse;
 import com.gopick.server.project.service.RecruitPostDraftService;
 import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import static com.gopick.server.global.SessionUtil.requireAccountId;
 
@@ -23,11 +27,9 @@ public class RecruitPostController {
 
     @PostMapping("/recruit-post/draft")
     public RecruitPostDraftResponse generate(
-            @RequestBody RecruitPostDraftRequest request,
+            @Valid @RequestBody RecruitPostDraftRequest request,
             HttpServletRequest httpRequest
     ) {
-        requireAccountId(httpRequest);
-
-        return service.generate(request);
+        return service.generate(requireAccountId(httpRequest), request);
     }
 }

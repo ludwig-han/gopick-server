@@ -15,6 +15,11 @@ import java.util.Map;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RestControllerAdvice(annotations = ProjectApiEndpoint.class)
 public class ProjectApiExceptionHandler {
+    @ExceptionHandler(AiServiceException.class)
+    public ResponseEntity<ErrorResponse> aiFailure(AiServiceException e) {
+        return ResponseEntity.status(e.getStatus()).body(new ErrorResponse(e.getCode(), e.getMessage()));
+    }
+
     @ExceptionHandler(ProjectNotFoundException.class)
     public ResponseEntity<ErrorResponse> missing(ProjectNotFoundException e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse("PROJECT_NOT_FOUND", e.getMessage()));

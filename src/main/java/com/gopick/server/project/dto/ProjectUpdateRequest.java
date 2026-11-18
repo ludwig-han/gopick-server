@@ -23,6 +23,7 @@ public class ProjectUpdateRequest extends ProjectRecruitmentRequest {
     private String extra;
     private Boolean recruiting;
 
+    @ProjectPostSize
     private String post;
 
     public String getTitle() { return title; }

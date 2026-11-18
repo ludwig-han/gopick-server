@@ -1,10 +1,9 @@
 package com.gopick.server.project.service;
 
 import com.gopick.server.project.dto.RecruitPostDraftRequest;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.MediaType;
+import com.gopick.server.project.exception.AiServiceException;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
@@ -13,117 +12,32 @@ import java.util.Map;
 @Component
 public class UpstageRecruitPostAiClient implements RecruitPostAiClient {
 
-    private final RestClient restClient;
+    private static final int MAX_OUTPUT_TOKENS = 2_048;
+
+    private final UpstageChatClient chatClient;
     private final ObjectMapper objectMapper;
-    private final String model;
-    private final String apiKey;
 
-    public UpstageRecruitPostAiClient(
-            ObjectMapper objectMapper,
-            @Value("${upstage.api-key:}") String apiKey,
-            @Value("${upstage.base-url:https://api.upstage.ai/v1}") String baseUrl,
-            @Value("${upstage.model:solar-pro4}") String model
-    ) {
+    public UpstageRecruitPostAiClient(UpstageChatClient chatClient, ObjectMapper objectMapper) {
+        this.chatClient = chatClient;
         this.objectMapper = objectMapper;
-        this.apiKey = apiKey;
-        this.model = model;
-
-        this.restClient = RestClient.builder()
-                .baseUrl(baseUrl)
-                .defaultHeader(
-                        "Authorization",
-                        "Bearer " + apiKey
-                )
-                .build();
     }
 
     @Override
     public String generate(RecruitPostDraftRequest request) {
+        String userPrompt = """
+                다음 프로젝트 정보를 바탕으로 팀원 모집글을 작성하세요.
+                제공된 정보만 사용하고 지정된 출력 구조를 모두 채우세요.
 
-        if (apiKey == null || apiKey.isBlank()) {
-            throw new IllegalStateException(
-                    "UPSTAGE_API_KEY가 설정되지 않았습니다."
-            );
-        }
-
+                INPUT:
+                %s
+                """.formatted(objectMapper.writeValueAsString(request));
+        String content = chatClient.complete(systemPrompt(), userPrompt, 0.4, MAX_OUTPUT_TOKENS, responseFormat());
         try {
-            String input =
-                    objectMapper.writeValueAsString(request);
-
-            Map<String, Object> body =
-                    Map.of(
-                            "model", model,
-
-                            "messages", List.of(
-                                    Map.of(
-                                            "role", "system",
-                                            "content", systemPrompt()
-                                    ),
-                                    Map.of(
-                                            "role", "user",
-                                            "content",
-                                            """
-                                            다음 프로젝트 정보를 바탕으로
-                                            완성된 팀원 모집글을 작성하세요.
-
-                                            반드시 제공된 정보만 사용하고,
-                                            지정된 출력 구조를 모두 채우세요.
-
-                                            INPUT:
-                                            %s
-                                            """.formatted(input)
-                                    )
-                            ),
-
-                            "temperature", 0.4,
-
-                            "response_format",
-                            responseFormat()
-                    );
-
-            UpstageChatResponse response =
-                    restClient.post()
-                            .uri("/chat/completions")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .body(body)
-                            .retrieve()
-                            .body(UpstageChatResponse.class);
-
-            if (response == null
-                    || response.choices() == null
-                    || response.choices().isEmpty()
-                    || response.choices().getFirst().message() == null
-                    || response.choices()
-                    .getFirst()
-                    .message()
-                    .content() == null) {
-
-                throw new IllegalStateException(
-                        "Upstage 응답에 모집글이 없습니다."
-                );
-            }
-
-            String content =
-                    response.choices()
-                            .getFirst()
-                            .message()
-                            .content();
-
-            GeneratedPost generated =
-                    objectMapper.readValue(
-                            content,
-                            GeneratedPost.class
-                    );
-
+            GeneratedPost generated = objectMapper.readValue(content, GeneratedPost.class);
             validateGeneratedPost(generated);
-
             return renderPost(generated);
-
-        } catch (Exception e) {
-            throw new IllegalStateException(
-                    "Upstage 모집글 생성에 실패했습니다.",
-                    e
-            );
+        } catch (JacksonException | IllegalStateException e) {
+            throw AiServiceException.upstreamFailure(e);
         }
     }
 
@@ -262,15 +176,6 @@ public class UpstageRecruitPostAiClient implements RecruitPostAiClient {
         post.append(generated.intro().trim());
 
         for (GeneratedSection section : generated.sections()) {
-
-            if (section == null
-                    || section.heading() == null
-                    || section.heading().isBlank()
-                    || section.body() == null
-                    || section.body().isBlank()) {
-                continue;
-            }
-
             post.append("\n\n■ ");
             post.append(section.heading().trim());
 
@@ -281,11 +186,6 @@ public class UpstageRecruitPostAiClient implements RecruitPostAiClient {
         post.append("\n\n■ 이런 분과 함께하고 싶어요");
 
         for (String item : generated.wantedTeam()) {
-
-            if (item == null || item.isBlank()) {
-                continue;
-            }
-
             post.append("\n- ");
             post.append(item.trim());
         }
@@ -315,15 +215,17 @@ public class UpstageRecruitPostAiClient implements RecruitPostAiClient {
             );
         }
 
-        if (generated.sections() == null
-                || generated.sections().size() < 2) {
+        if (generated.sections() == null || generated.sections().size() < 2
+                || generated.sections().stream().anyMatch(section -> section == null
+                        || section.heading() == null || section.heading().isBlank()
+                        || section.body() == null || section.body().isBlank())) {
             throw new IllegalStateException(
                     "생성된 모집글 본문이 부족합니다."
             );
         }
 
-        if (generated.wantedTeam() == null
-                || generated.wantedTeam().isEmpty()) {
+        if (generated.wantedTeam() == null || generated.wantedTeam().isEmpty()
+                || generated.wantedTeam().stream().anyMatch(item -> item == null || item.isBlank())) {
             throw new IllegalStateException(
                     "생성된 모집글의 팀원 조건이 없습니다."
             );
@@ -413,17 +315,5 @@ public class UpstageRecruitPostAiClient implements RecruitPostAiClient {
     private record GeneratedSection(
             String heading,
             String body
-    ) {}
-
-    private record UpstageChatResponse(
-            List<Choice> choices
-    ) {}
-
-    private record Choice(
-            Message message
-    ) {}
-
-    private record Message(
-            String content
     ) {}
 }
