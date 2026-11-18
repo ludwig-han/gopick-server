@@ -26,7 +26,10 @@ API 계약은 [API.md](API.md), 도메인 규칙은 [DOMAIN.md](DOMAIN.md)를 �
 
 | 환경변수 | 필수 | 기본값 / 용도 |
 |---|---|---|
-| `DB_PASSWORD` | 로컬 / 서버 DB 연결 시 필수 | MySQL root 비밀번호 |
+| `PORT` | 선택 | HTTP 포트, 기본값 `8080` |
+| `DB_URL` | 선택 | JDBC URL, 기본값 `jdbc:mysql://localhost:3306/gopick` |
+| `DB_USERNAME` | 선택 | MySQL 사용자, 기본값 `root` |
+| `DB_PASSWORD` | 로컬 / 서버 DB 연결 시 필수 | MySQL 사용자 비밀번호 |
 | `CORS_ALLOWED_ORIGINS` | 선택 | `http://localhost:5173,http://127.0.0.1:5173` |
 | `SESSION_COOKIE_SAME_SITE` | 선택 | `lax` |
 | `SESSION_COOKIE_SECURE` | 선택 | `false` |
@@ -36,6 +39,23 @@ API 계약은 [API.md](API.md), 도메인 규칙은 [DOMAIN.md](DOMAIN.md)를 �
 | `UPSTAGE_MODEL` | 선택 | `solar-pro4` |
 
 API key, DB 비밀번호 등 secret은 Git에 커밋하지 않습니다.
+
+### Railway
+
+루트의 Dockerfile은 Java 21로 애플리케이션을 빌드하고 실행합니다. Railway 앱 서비스에서 MySQL 서비스의 **내부 연결 정보**를 참조하는 환경변수를 설정합니다. 아래 `MySQL`은 Railway에서 실제로 만든 DB 서비스 이름으로 바꿉니다.
+
+```text
+DB_URL=jdbc:mysql://${{MySQL.MYSQLHOST}}:${{MySQL.MYSQLPORT}}/${{MySQL.MYSQLDATABASE}}
+DB_USERNAME=${{MySQL.MYSQLUSER}}
+DB_PASSWORD=${{MySQL.MYSQLPASSWORD}}
+CORS_ALLOWED_ORIGINS=https://실제-프론트-주소
+```
+
+Railway의 `PORT`는 앱에서 자동으로 사용합니다. 프론트와 백엔드가 서로 다른 사이트이고 세션 쿠키가 필요하면 HTTPS를 사용하고 `SESSION_COOKIE_SAME_SITE=none`, `SESSION_COOKIE_SECURE=true`를 설정합니다. 브라우저에서는 `credentials: 'include'`를 사용합니다. 프론트 주소가 여러 개이면 CORS 허용 주소를 쉼표로 구분합니다.
+
+AI 모집글은 `UPSTAGE_API_KEY`가 필요합니다. 실제 AI 추천도 사용하려면 같은 키와 `RECOMMENDATION_AI_MODE=upstage`를 설정합니다. 비밀값은 Railway의 변수로 관리하고 저장소에 넣지 않습니다.
+
+기존 staging 데이터를 옮길 때는 전환 전 백업을 만들고 원본과 대상 DB 및 버전을 확인합니다. 새 DB에 복원한 뒤 아래 마이그레이션 적용 여부와 주요 기능을 검증합니다. 전환 직전 기존 서버의 쓰기를 중지하고 마지막 데이터 복사와 검증을 마친 다음 프론트의 API 주소를 변경합니다. 복사 이후 두 DB는 자동으로 동기화되지 않습니다.
 
 ---
 
