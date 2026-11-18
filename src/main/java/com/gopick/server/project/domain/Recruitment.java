@@ -68,6 +68,10 @@ public class Recruitment {
         return remainingCount;
     }
 
+    public void decreaseRemainingCountIfAvailable() {
+        if (remainingCount > 0) remainingCount--;
+    }
+
     public ProjectConditionMode getTechMode() {
         return techMode;
     }

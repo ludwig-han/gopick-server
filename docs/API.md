@@ -235,7 +235,7 @@ PATCH /profiles/{profileId}
 GET /profiles/{profileId}
 ```
 
-성공 시 `200 OK`를 반환합니다. 본인은 공개 여부와 관계없이 조회할 수 있고 `contactPlatform`과 `contactId`를 받습니다. 다른 사용자의 공개 프로필을 조회하면 두 연락처 필드가 생략되며, 비공개 프로필 조회는 `403 PRIVATE_PROFILE`을 반환합니다.
+성공 시 `200 OK`를 반환합니다. 본인과 수락된 참여 요청의 상대는 공개 여부와 관계없이 프로필과 `contactPlatform`, `contactId`를 조회할 수 있습니다. APPLY는 지원자와 해당 프로젝트의 현재 팀장, OFFER는 제안받은 사람과 최초 제안자 사이에 양방향으로 공개합니다. APPLY의 팀장 변경 시 접근 대상도 현재 팀장으로 바뀝니다. 삭제된 프로젝트의 요청은 공개 근거가 되지 않습니다. 그 외 사용자가 공개 프로필을 조회하면 두 연락처 필드는 `null`이며, 비공개 프로필은 `403 PRIVATE_PROFILE`입니다.
 
 본인 프로필 조회 응답 예시
 
@@ -563,6 +563,7 @@ ACCEPTED | REJECTED | CANCELED
 - OFFER 수락 / 거절: 제안을 받은 사용자
 - CANCELED: 요청을 보낸 사용자
 - ACCEPTED 시 요청의 `role`로 ProjectMember가 생성됨
+- ACCEPTED 시 해당 역할의 `remainingCount`가 1 이상이면 1 감소합니다. 이미 0이거나 해당 역할이 모집 목록에 없어도 수락하며 인원은 변경하지 않습니다. 재처리·거절·취소는 인원을 차감하지 않습니다.
 
 ### 목록
 

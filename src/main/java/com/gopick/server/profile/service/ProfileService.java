@@ -14,6 +14,7 @@ import com.gopick.server.profile.repository.ProfilePreferenceRepository;
 import com.gopick.server.profile.repository.ProfileRepository;
 import com.gopick.server.profile.repository.ProfileRoleRepository;
 import com.gopick.server.profile.repository.ProfileTechnologyRepository;
+import com.gopick.server.project.repository.ParticipationRequestRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +33,7 @@ public class ProfileService {
     private final ProfileExperienceAttributeRepository profileExperienceAttributeRepository;
     private final ProfileInterestRepository profileInterestRepository;
     private final ProfilePreferenceRepository profilePreferenceRepository;
+    private final ParticipationRequestRepository participationRequests;
 
     public ProfileService(ProfileRepository profileRepository,
                           AccountRepository accountRepository,
@@ -41,7 +43,8 @@ public class ProfileService {
                           ProfileRoleRepository profileRoleRepository,
                           ProfilePreferenceRepository profilePreferenceRepository,
                           ProfileExperienceRepository profileExperienceRepository,
-                          ProfileExperienceAttributeRepository profileExperienceAttributeRepository) {
+                          ProfileExperienceAttributeRepository profileExperienceAttributeRepository,
+                          ParticipationRequestRepository participationRequests) {
         this.profileRepository = profileRepository;
         this.accountRepository = accountRepository;
         this.profilePartRepository = profilePartRepository;
@@ -51,6 +54,7 @@ public class ProfileService {
         this.profilePreferenceRepository = profilePreferenceRepository;
         this.profileExperienceRepository = profileExperienceRepository;
         this.profileExperienceAttributeRepository = profileExperienceAttributeRepository;
+        this.participationRequests = participationRequests;
     }
 
     @Transactional
@@ -146,7 +150,9 @@ public class ProfileService {
         Profile profile = profileRepository.findById(profileId)
                 .orElseThrow(ProfileNotFoundException::new);
 
-        if (!profile.isPublic() && !profile.getAccount().getId().equals(accountId)) {
+        boolean isOwner = profile.getAccount().getId().equals(accountId);
+        boolean canViewContact = isOwner || participationRequests.hasAcceptedContactAccess(accountId, profileId);
+        if (!profile.isPublic() && !canViewContact) {
             throw new PrivateProfileException();
         }
 
@@ -184,14 +190,12 @@ public class ProfileService {
                 .map(experience -> toExperienceDetail(experience, attributesByExperience))
                 .toList();
 
-        boolean isOwner = profile.getAccount().getId().equals(accountId);
-
         return new ProfileDetailResponse(
                 profile.getId(),
                 profile.getName(),
                 profile.getMajor(),
-                isOwner ? profile.getContactPlatform() : null,
-                isOwner ? profile.getContactId() : null,
+                canViewContact ? profile.getContactPlatform() : null,
+                canViewContact ? profile.getContactId() : null,
                 profile.isPublic(),
                 profile.getTeamTendency(),
                 profile.getIntro(),

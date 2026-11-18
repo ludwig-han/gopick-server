@@ -13,6 +13,31 @@ import java.util.Optional;
 import java.util.Collection;
 
 public interface ParticipationRequestRepository extends JpaRepository<ParticipationRequest, Long> {
+    // APPLY follows the current project leader; OFFER keeps the original sender as the counterpart.
+    @Query("""
+            select (count(r) > 0) from ParticipationRequest r join r.project project
+            where r.status = com.gopick.server.project.domain.ParticipationRequestStatus.ACCEPTED
+              and (
+                (r.type = com.gopick.server.project.domain.ParticipationRequestType.OFFER and (
+                    (r.sender.account.id = :viewer and r.participant.id = :target)
+                    or (r.participant.account.id = :viewer and r.sender.id = :target)
+                ))
+                or (r.type = com.gopick.server.project.domain.ParticipationRequestType.APPLY and (
+                    (r.participant.id = :target and exists (
+                        select 1 from ProjectMember m where m.project = project
+                        and m.memberType = com.gopick.server.project.domain.ProjectMemberType.LEADER
+                        and m.profile.account.id = :viewer
+                    ))
+                    or (r.participant.account.id = :viewer and exists (
+                        select 1 from ProjectMember m where m.project = project
+                        and m.memberType = com.gopick.server.project.domain.ProjectMemberType.LEADER
+                        and m.profile.id = :target
+                    ))
+                ))
+              )
+            """)
+    boolean hasAcceptedContactAccess(@Param("viewer") Long viewer, @Param("target") Long target);
+
     // Mirrors the sent/received list visibility rules, restricted to IDs in the caller's notifications.
     @Query("""
             select r.id from ParticipationRequest r join r.project project

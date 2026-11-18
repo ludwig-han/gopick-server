@@ -1,16 +1,13 @@
 package com.gopick.server.profile.dto;
 
 import com.gopick.server.profile.domain.ProfilePreferenceCategory;
-import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
 public record ProfileDetailResponse(
         Long profileId,
         String name,
         String major,
-        @JsonInclude(JsonInclude.Include.NON_NULL)
         String contactPlatform,
-        @JsonInclude(JsonInclude.Include.NON_NULL)
         String contactId,
         boolean isPublic,
         String teamTendency,
