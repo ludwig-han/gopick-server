@@ -8,10 +8,11 @@ import com.gopick.server.project.domain.ProjectStatus;
 import com.gopick.server.project.dto.ProjectActivityResponse;
 import com.gopick.server.project.dto.StageTaskResponse;
 import com.gopick.server.project.exception.InvalidProjectStateException;
-import com.gopick.server.project.exception.ProjectValidationException;
+import com.gopick.server.project.exception.ProjectNotFoundException;
 import com.gopick.server.project.exception.StageTaskNotFoundException;
 import com.gopick.server.project.repository.ProjectActivityRepository;
 import com.gopick.server.project.repository.ProjectStageTaskRepository;
+import com.gopick.server.project.repository.ProjectRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,46 +25,49 @@ public class ProjectWorkLogService {
     private final ProjectAccess access;
     private final ProjectStageTaskRepository tasks;
     private final ProjectActivityRepository activities;
+    private final ProjectRepository projects;
 
-    public ProjectWorkLogService(ProjectAccess access, ProjectStageTaskRepository tasks, ProjectActivityRepository activities) {
+    public ProjectWorkLogService(ProjectAccess access, ProjectStageTaskRepository tasks,
+                                 ProjectActivityRepository activities, ProjectRepository projects) {
         this.access = access;
         this.tasks = tasks;
         this.activities = activities;
+        this.projects = projects;
     }
 
-    public List<StageTaskResponse> listTasks(Long accountId, String projectId, String rawStage) {
-        Project project = access.lock(accountId, projectId);
-        access.requireMember(project.getId(), accountId);
-        return tasks.findAllByProject_IdAndStageOrderByIdAsc(project.getId(), parseStage(rawStage))
+    @Transactional(readOnly = true)
+    public List<StageTaskResponse> listTasks(Long accountId, String projectId) {
+        Project project = readableProject(accountId, projectId);
+        return tasks.findAllByProject_IdOrderByIdAsc(project.getId())
                 .stream().map(StageTaskResponse::from).toList();
     }
 
-    public StageTaskResponse createTask(Long accountId, String projectId, String rawStage, String title) {
+    public StageTaskResponse createTask(Long accountId, String projectId, ProjectStage stage, String text) {
         Project project = access.lock(accountId, projectId);
         access.requireMember(project.getId(), accountId);
         requireInProgress(project);
-        return StageTaskResponse.from(tasks.save(new ProjectStageTask(project, parseStage(rawStage), title.strip())));
+        return StageTaskResponse.from(tasks.save(new ProjectStageTask(project, stage, text.strip())));
     }
 
-    public StageTaskResponse updateTask(Long accountId, String projectId, String rawStage, String rawTaskId, boolean completed) {
+    public StageTaskResponse updateTask(Long accountId, String projectId, String rawTaskId, boolean completed) {
         Project project = access.lock(accountId, projectId);
         access.requireMember(project.getId(), accountId);
         requireInProgress(project);
-        var task = findTask(project, rawStage, rawTaskId);
+        var task = findTask(project, rawTaskId);
         task.setCompleted(completed);
         return StageTaskResponse.from(task);
     }
 
-    public void deleteTask(Long accountId, String projectId, String rawStage, String rawTaskId) {
+    public void deleteTask(Long accountId, String projectId, String rawTaskId) {
         Project project = access.lock(accountId, projectId);
         access.requireMember(project.getId(), accountId);
         requireInProgress(project);
-        tasks.delete(findTask(project, rawStage, rawTaskId));
+        tasks.delete(findTask(project, rawTaskId));
     }
 
+    @Transactional(readOnly = true)
     public List<ProjectActivityResponse> listActivities(Long accountId, String projectId) {
-        Project project = access.lock(accountId, projectId);
-        access.requireMember(project.getId(), accountId);
+        Project project = readableProject(accountId, projectId);
         return activities.findActivities(project.getId()).stream().map(ProjectActivityResponse::from).toList();
     }
 
@@ -74,17 +78,14 @@ public class ProjectWorkLogService {
         return ProjectActivityResponse.from(activities.save(new ProjectActivity(project, member.getProfile(), content.strip())));
     }
 
-    private ProjectStageTask findTask(Project project, String stage, String rawTaskId) {
-        return tasks.findByIdAndProject_IdAndStage(access.parseId(rawTaskId, "taskId"), project.getId(), parseStage(stage))
+    private ProjectStageTask findTask(Project project, String rawTaskId) {
+        return tasks.findByIdAndProject_Id(access.parseId(rawTaskId, "taskId"), project.getId())
                 .orElseThrow(StageTaskNotFoundException::new);
     }
 
-    private static ProjectStage parseStage(String raw) {
-        try {
-            return ProjectStage.valueOf(raw);
-        } catch (IllegalArgumentException e) {
-            throw new ProjectValidationException("stage", "허용되지 않는 단계입니다.");
-        }
+    private Project readableProject(Long accountId, String projectId) {
+        access.requireAccount(accountId);
+        return projects.findById(access.parseId(projectId)).orElseThrow(ProjectNotFoundException::new);
     }
 
     private static void requireInProgress(Project project) {

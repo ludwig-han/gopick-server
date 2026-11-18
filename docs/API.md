@@ -70,8 +70,8 @@ fetch(`${BASE_URL}/me`, {
 | Project | PATCH | `/projects/{projectId}` | 프로젝트 수정 |
 | Project | POST | `/projects/{projectId}/start` | 프로젝트 시작 |
 | Project | PATCH | `/projects/{projectId}/stage` | 진행 단계 변경 |
-| Project | GET / POST | `/projects/{projectId}/stages/{stage}/tasks` | 단계별 과제 조회 / 추가 |
-| Project | PATCH / DELETE | `/projects/{projectId}/stages/{stage}/tasks/{taskId}` | 과제 완료 변경 / 삭제 |
+| Project | GET / POST | `/projects/{projectId}/tasks` | 과제 조회 / 단계별 추가 |
+| Project | PATCH / DELETE | `/projects/{projectId}/tasks/{taskId}` | 과제 완료 변경 / 삭제 |
 | Project | GET / POST | `/projects/{projectId}/activities` | 활동 메모 조회 / 추가 |
 | Project | POST | `/projects/{projectId}/complete` | 프로젝트 완료 |
 | Project | PATCH | `/projects/{projectId}/leader` | 팀장 위임 |
@@ -440,34 +440,41 @@ Stage 변경:
 
 ### 단계별 과제와 활동 기록
 
-모든 요청은 로그인한 해당 프로젝트의 LEADER 또는 MEMBER가 사용할 수 있습니다. 모든 상태에서 조회할 수 있고, 추가·변경·삭제는 `IN_PROGRESS`에서만 가능합니다. `stage`는 `PLANNING`(기획), `DESIGN`(설계), `IMPLEMENTATION`(개발), `TESTING`(테스트), `PRODUCTION`(배포) 중 하나입니다. 현재 진행 단계와 관계없이 각 단계의 과제를 관리할 수 있습니다.
+조회는 로그인한 모든 사용자가 할 수 있습니다. 추가·변경·삭제는 `IN_PROGRESS` 프로젝트의 LEADER 또는 MEMBER만 가능합니다. `stage`는 `PLANNING`(기획), `DESIGN`(설계), `IMPLEMENTATION`(개발), `TESTING`(테스트), `PRODUCTION`(배포) 중 하나입니다. 현재 진행 단계와 관계없이 각 단계의 과제를 관리할 수 있습니다.
 
 ```http
-GET    /projects/{projectId}/stages/{stage}/tasks
-POST   /projects/{projectId}/stages/{stage}/tasks
-PATCH  /projects/{projectId}/stages/{stage}/tasks/{taskId}
-DELETE /projects/{projectId}/stages/{stage}/tasks/{taskId}
+GET    /projects/{projectId}/tasks
+POST   /projects/{projectId}/tasks
+PATCH  /projects/{projectId}/tasks/{taskId}
+DELETE /projects/{projectId}/tasks/{taskId}
 GET    /projects/{projectId}/activities
 POST   /projects/{projectId}/activities
 ```
 
-과제 생성 요청은 `{"title":"화면 설계"}`이며 `201 Created`와 다음 항목을 반환합니다. `GET`은 해당 단계의 과제를 생성 순으로 반환합니다.
+과제 생성 요청은 `{"stage":"DESIGN","text":"화면 설계"}`이며 `201 Created`와 다음 항목을 반환합니다. 과제 `GET`은 모든 단계의 과제를 생성 순으로 반환합니다.
 
 ```json
-{"id": 12, "stage": "DESIGN", "title": "화면 설계", "completed": false, "createdAt": "2026-11-19T09:30:00"}
+{"id": 12, "stage": "DESIGN", "text": "화면 설계", "done": false}
 ```
 
-완료 체크 및 해제는 `PATCH`에 `{"completed":true}` 또는 `{"completed":false}`를 보내고, 변경된 항목을 `200 OK`로 받습니다. 삭제는 `204 No Content`입니다. 다른 프로젝트나 단계의 과제 ID는 `404 STAGE_TASK_NOT_FOUND`입니다.
+완료 체크 및 해제는 `PATCH`에 `{"done":true}` 또는 `{"done":false}`를 보내고, 변경된 항목을 `200 OK`로 받습니다. 삭제는 `204 No Content`입니다. 존재하지 않거나 다른 프로젝트의 과제 ID는 `404 STAGE_TASK_NOT_FOUND`입니다.
 
-활동 기록 생성 요청은 `{"content":"로그인 화면을 완성했습니다"}`이며 `201 Created`와 다음 항목을 반환합니다. 목록은 최신 생성 순서(ID 내림차순)입니다.
+활동 기록 생성 요청은 `{"text":"로그인 화면을 완성했습니다"}`이며 `201 Created`와 다음 항목을 반환합니다. 날짜와 작성자는 서버가 정하며 목록은 최신 생성 순서(ID 내림차순)입니다.
 
 ```json
-{"id": 7, "content": "로그인 화면을 완성했습니다", "authorName": "홍길동", "createdAt": "2026-11-19T09:30:00"}
+{"id": 7, "date": "2026-11-19", "author": "홍길동", "text": "로그인 화면을 완성했습니다"}
 ```
 
-`title`과 `content`는 공백만 있거나 줄바꿈을 포함할 수 없고 최대 255자입니다. 양끝 공백은 저장 시 제거합니다. `createdAt`은 서버 시간대의 시간이며 시간대 정보는 포함하지 않습니다. 작성자 이름은 현재 프로필 이름을 사용하므로 프로필 이름 변경이 조회에도 반영됩니다. 작성자가 회원 탈퇴하면 메모는 유지되고 이름은 `탈퇴한 회원입니다`로 표시됩니다. 활동 기록은 사용자가 직접 작성한 메모이며 과제 변경 시 자동 생성되지는 않습니다.
+과제 `text`는 최대 255자, 활동 기록 `text`는 최대 100자입니다. 공백만 있거나 줄바꿈을 포함할 수 없고 양끝 공백은 저장 시 제거합니다. 활동 기록 `date`는 서버 시간대의 날짜(`YYYY-MM-DD`)입니다. 작성자 이름은 현재 프로필 이름을 사용하므로 프로필 이름 변경이 조회에도 반영됩니다. 작성자가 회원 탈퇴하면 메모는 유지되고 이름은 `탈퇴한 회원입니다`로 표시됩니다. 활동 기록은 사용자가 직접 작성한 메모이며 과제 변경 시 자동 생성되지는 않습니다.
 
-비구성원은 `403 PROJECT_ACCESS_DENIED`, 삭제됐거나 없는 프로젝트는 `404 PROJECT_NOT_FOUND`, 진행 중이 아닌 프로젝트에 대한 변경은 `409 INVALID_PROJECT_STATE`입니다. 잘못된 단계·ID·본문은 `400 VALIDATION_ERROR`입니다.
+`GET /projects/{projectId}`의 상세 응답에도 `tasks`와 `log`가 포함됩니다. `tasks`는 위 단계 순서대로 항상 다섯 배열이며 각 배열의 과제는 생성 순서입니다. `log`는 위 활동 기록 항목의 최신순 배열입니다. 값이 없으면 다섯 개의 빈 과제 배열과 빈 기록 배열을 반환합니다.
+
+```json
+{"tasks": [[], [{"id": 12, "stage": "DESIGN", "text": "화면 설계", "done": false}], [], [], []],
+ "log": [{"id": 7, "date": "2026-11-19", "author": "홍길동", "text": "로그인 화면을 완성했습니다"}]}
+```
+
+비구성원의 변경은 `403 PROJECT_ACCESS_DENIED`, 삭제됐거나 없는 프로젝트는 `404 PROJECT_NOT_FOUND`, 진행 중이 아닌 프로젝트에 대한 변경은 `409 INVALID_PROJECT_STATE`입니다. 잘못된 단계·ID·본문은 `400 VALIDATION_ERROR`입니다.
 
 ### 팀장 위임
 

@@ -23,31 +23,30 @@ public class ProjectWorkLogController {
 
     public ProjectWorkLogController(ProjectWorkLogService service) { this.service = service; }
 
-    @GetMapping("/stages/{stage}/tasks")
-    public List<StageTaskResponse> listTasks(@PathVariable("projectId") String projectId,
-                                             @PathVariable("stage") String stage, HttpServletRequest request) {
-        return service.listTasks(requireAccountId(request), projectId, stage);
+    @GetMapping("/tasks")
+    public List<StageTaskResponse> listTasks(@PathVariable("projectId") String projectId, HttpServletRequest request) {
+        return service.listTasks(requireAccountId(request), projectId);
     }
 
-    @PostMapping("/stages/{stage}/tasks")
+    @PostMapping("/tasks")
     @ResponseStatus(HttpStatus.CREATED)
-    public StageTaskResponse createTask(@PathVariable("projectId") String projectId, @PathVariable("stage") String stage,
+    public StageTaskResponse createTask(@PathVariable("projectId") String projectId,
                                         @Valid @RequestBody CreateStageTaskRequest input, HttpServletRequest request) {
-        return service.createTask(requireAccountId(request), projectId, stage, input.title());
+        return service.createTask(requireAccountId(request), projectId, input.stage(), input.text());
     }
 
-    @PatchMapping("/stages/{stage}/tasks/{taskId}")
-    public StageTaskResponse updateTask(@PathVariable("projectId") String projectId, @PathVariable("stage") String stage,
+    @PatchMapping("/tasks/{taskId}")
+    public StageTaskResponse updateTask(@PathVariable("projectId") String projectId,
                                         @PathVariable("taskId") String taskId, @Valid @RequestBody UpdateStageTaskRequest input,
                                         HttpServletRequest request) {
-        return service.updateTask(requireAccountId(request), projectId, stage, taskId, input.completed());
+        return service.updateTask(requireAccountId(request), projectId, taskId, input.done());
     }
 
-    @DeleteMapping("/stages/{stage}/tasks/{taskId}")
+    @DeleteMapping("/tasks/{taskId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteTask(@PathVariable("projectId") String projectId, @PathVariable("stage") String stage,
+    public void deleteTask(@PathVariable("projectId") String projectId,
                            @PathVariable("taskId") String taskId, HttpServletRequest request) {
-        service.deleteTask(requireAccountId(request), projectId, stage, taskId);
+        service.deleteTask(requireAccountId(request), projectId, taskId);
     }
 
     @GetMapping("/activities")
@@ -59,6 +58,6 @@ public class ProjectWorkLogController {
     @ResponseStatus(HttpStatus.CREATED)
     public ProjectActivityResponse createActivity(@PathVariable("projectId") String projectId,
                                                   @Valid @RequestBody CreateProjectActivityRequest input, HttpServletRequest request) {
-        return service.createActivity(requireAccountId(request), projectId, input.content());
+        return service.createActivity(requireAccountId(request), projectId, input.text());
     }
 }
