@@ -7,12 +7,16 @@ import com.gopick.server.project.domain.ProjectMemberType;
 import com.gopick.server.project.dto.ProjectListResponse;
 import com.gopick.server.project.dto.ProjectReadResponse;
 import com.gopick.server.project.dto.ProjectRecruitmentDetails;
+import com.gopick.server.project.dto.StageTaskResponse;
+import com.gopick.server.project.dto.ProjectActivityResponse;
+import com.gopick.server.project.domain.ProjectStage;
 import com.gopick.server.project.exception.ProjectNotFoundException;
 import com.gopick.server.project.exception.ProjectValidationException;
 import com.gopick.server.project.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -25,11 +29,16 @@ public class ProjectReadService {
     private final ProjectSearchRepository search;
     private final ProjectMembershipRepository memberships;
     private final RecruitmentRepository recruitments;
+    private final ProjectStageTaskRepository tasks;
+    private final ProjectActivityRepository activities;
     public ProjectReadService(ProjectAccess access, ProjectRepository projects,
                               ProjectSearchRepository search, ProjectMembershipRepository memberships,
-                              RecruitmentRepository recruitments) {
+                              RecruitmentRepository recruitments, ProjectStageTaskRepository tasks,
+                              ProjectActivityRepository activities) {
         this.access = access; this.projects = projects; this.search = search; this.memberships = memberships;
         this.recruitments = recruitments;
+        this.tasks = tasks;
+        this.activities = activities;
     }
     public List<ProjectListResponse> list(Long accountId, String status, String recruiting) {
         access.requireAccount(accountId);
@@ -89,6 +98,10 @@ public class ProjectReadService {
         Project p = projects.findById(access.parseId(projectId)).orElseThrow(ProjectNotFoundException::new);
         var members = memberships.findMembers(p.getId()).stream().map(m -> memberResponse(m, accountId)).toList();
         var recruitment = ProjectRecruitmentDetails.from(p, recruitments.findAllByProject_IdOrderByRoleAsc(p.getId()));
+        var stageTasks = tasks.findAllByProject_IdOrderByIdAsc(p.getId()).stream().map(StageTaskResponse::from).toList();
+        var groupedTasks = Arrays.stream(ProjectStage.values())
+                .map(stage -> stageTasks.stream().filter(task -> task.stage() == stage).toList()).toList();
+        var activityLog = activities.findActivities(p.getId()).stream().map(ProjectActivityResponse::from).toList();
         
         return new ProjectReadResponse(
                 p.getId(),
@@ -109,7 +122,9 @@ public class ProjectReadService {
                 recruitment.attributes(),
                 recruitment.experience(),
                 recruitment.recruitments(),
-                recruitment.links()
+                recruitment.links(),
+                groupedTasks,
+                activityLog
         );
     }
 }

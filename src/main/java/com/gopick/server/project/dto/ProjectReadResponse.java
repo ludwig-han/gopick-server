@@ -11,7 +11,8 @@ public record ProjectReadResponse(Long projectId, String title, String descripti
                                   List<ProjectRecruitmentDetails.Attribute> attributes,
                                   ProjectRecruitmentDetails.Experience experience,
                                   List<ProjectRecruitmentDetails.RoleRecruitment> recruitments,
-                                  List<ProjectRecruitmentDetails.Link> links) {
+                                  List<ProjectRecruitmentDetails.Link> links,
+                                  List<List<StageTaskResponse>> tasks, List<ProjectActivityResponse> log) {
     public record Member(Long profileId, String name, boolean isPublic, ProjectRole role,
                          ProjectMemberType authority, LocalDateTime joinedAt) {}
 }

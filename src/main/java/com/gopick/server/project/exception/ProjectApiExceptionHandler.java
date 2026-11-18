@@ -15,6 +15,10 @@ import java.util.Map;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RestControllerAdvice(annotations = ProjectApiEndpoint.class)
 public class ProjectApiExceptionHandler {
+    @ExceptionHandler(StageTaskNotFoundException.class)
+    public ResponseEntity<ErrorResponse> missingStageTask(StageTaskNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse("STAGE_TASK_NOT_FOUND", e.getMessage()));
+    }
     @ExceptionHandler(AiServiceException.class)
     public ResponseEntity<ErrorResponse> aiFailure(AiServiceException e) {
         return ResponseEntity.status(e.getStatus()).body(new ErrorResponse(e.getCode(), e.getMessage()));
