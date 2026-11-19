@@ -33,6 +33,7 @@ public class UpstageRecommendationAiClient
 
     @Override
     public RecommendationAiResult recommend(RecommendationAiRequest request) {
+        request = RecommendationExperiencePolicy.sanitizeRequest(request);
         String userPrompt = """
                 다음은 프로젝트 정보와 추천 가능한 후보 목록입니다.
                 제공된 데이터만 사용해서 모든 후보를 비교하고 추천 결과를 생성하세요.
@@ -44,7 +45,7 @@ public class UpstageRecommendationAiClient
         try {
             RecommendationAiResult result = objectMapper.readValue(content, RecommendationAiResult.class);
             validateResult(request, result);
-            return result;
+            return RecommendationExperiencePolicy.sanitizeResult(request, result);
         } catch (JacksonException | IllegalStateException e) {
             throw AiServiceException.upstreamFailure(e);
         }
@@ -67,6 +68,9 @@ public class UpstageRecommendationAiClient
             6. score가 높을수록 프로젝트에 더 적합한 후보입니다.
             7. REQUIRED 조건은 서버에서 이미 검증했습니다.
                따라서 REQUIRED 조건을 이유로 후보를 제거하지 않습니다.
+            8. experienceMode가 NONE이면 후보의 경험이나 경력을 점수, 순위,
+               matched, unmatched, summary의 판단 근거로 사용하지 않습니다.
+               경험이나 경력을 추측하지 않으며 EXPERIENCE 항목을 출력하지 않습니다.
 
             [추천 판단]
 
