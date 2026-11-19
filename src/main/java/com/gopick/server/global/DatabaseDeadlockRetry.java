@@ -6,6 +6,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.sql.SQLException;
 import java.time.Duration;
+import java.util.function.Supplier;
 
 public final class DatabaseDeadlockRetry {
     private static final int MYSQL_DEADLOCK = 1213;
@@ -27,6 +28,13 @@ public final class DatabaseDeadlockRetry {
             return;
         }
         RETRY.invoke(action);
+    }
+
+    public static <T> T call(Supplier<T> action) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            return action.get();
+        }
+        return RETRY.invoke(action);
     }
 
     private static boolean isRetryableRollback(Throwable failure) {

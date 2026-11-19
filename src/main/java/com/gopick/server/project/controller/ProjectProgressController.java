@@ -1,5 +1,6 @@
 package com.gopick.server.project.controller;
 
+import com.gopick.server.global.DatabaseDeadlockRetry;
 import com.gopick.server.project.dto.ProjectResponse;
 import com.gopick.server.project.dto.ProjectStageRequest;
 import com.gopick.server.project.service.ProjectProgressService;
@@ -16,16 +17,19 @@ public class ProjectProgressController {
     public ProjectProgressController(ProjectProgressService service) { this.service = service; }
     @PostMapping("/start")
     public ProjectResponse start(@PathVariable("projectId") String projectId, HttpServletRequest request) {
-        return service.start(requireAccountId(request), projectId);
+        Long accountId = requireAccountId(request);
+        return DatabaseDeadlockRetry.call(() -> service.start(accountId, projectId));
     }
     @PostMapping("/complete")
     public ProjectResponse complete(@PathVariable("projectId") String projectId, HttpServletRequest request) {
-        return service.complete(requireAccountId(request), projectId);
+        Long accountId = requireAccountId(request);
+        return DatabaseDeadlockRetry.call(() -> service.complete(accountId, projectId));
     }
 
     @PatchMapping("/stage")
     public ProjectResponse stage(@PathVariable("projectId") String projectId,
                                  @Valid @RequestBody ProjectStageRequest update, HttpServletRequest request) {
-        return service.changeStage(requireAccountId(request), projectId, update.stage());
+        Long accountId = requireAccountId(request);
+        return DatabaseDeadlockRetry.call(() -> service.changeStage(accountId, projectId, update.stage()));
     }
 }
