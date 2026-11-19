@@ -145,10 +145,9 @@ public class RecommendationService {
         /*
          * 실제 AI 호출
          */
-        RecommendationAiResult aiResult =
-                aiClient.recommend(
-                        prepared.request()
-                );
+        RecommendationAiRequest aiRequest = RecommendationExperiencePolicy.sanitizeRequest(prepared.request());
+        RecommendationAiResult aiResult = RecommendationExperiencePolicy.sanitizeResult(
+                aiRequest, aiClient.recommend(aiRequest));
 
         /*
          * AI 결과를 그대로 믿지 않고 검증한 뒤
