@@ -15,12 +15,10 @@ class DatabaseDeadlockRetryTests {
         var attempts = new AtomicInteger();
         var failure = new CannotAcquireLockException("Lock wait timeout",
                 new SQLException("Lock wait timeout", "HY000", 1205));
-
         assertThatThrownBy(() -> DatabaseDeadlockRetry.run(() -> {
             attempts.incrementAndGet();
             throw failure;
         })).isSameAs(failure);
-
         assertThat(attempts.get()).isEqualTo(1);
     }
 
@@ -28,12 +26,30 @@ class DatabaseDeadlockRetryTests {
     void repeatedDeadlocksHaveABoundedRetry() {
         var attempts = new AtomicInteger();
         var failure = new CannotAcquireLockException("Deadlock", new SQLException("Deadlock", "40001", 1213));
-
         assertThatThrownBy(() -> DatabaseDeadlockRetry.run(() -> {
             attempts.incrementAndGet();
             throw failure;
         })).isSameAs(failure);
+        assertThat(attempts.get()).isEqualTo(3);
+    }
 
+    @Test
+    void propagatesNonDeadlockFailuresWithoutRetrying() {
+        var attempts = new AtomicInteger();
+        assertThatThrownBy(() -> DatabaseDeadlockRetry.call(() -> {
+            attempts.incrementAndGet();
+            throw new IllegalArgumentException("invalid input");
+        })).isInstanceOf(IllegalArgumentException.class);
+        assertThat(attempts.get()).isEqualTo(1);
+    }
+
+    @Test
+    void persistentDeadlockStopsAfterThreeAttempts() {
+        var attempts = new AtomicInteger();
+        assertThatThrownBy(() -> DatabaseDeadlockRetry.call(() -> {
+            attempts.incrementAndGet();
+            throw new CannotAcquireLockException("deadlock", new SQLException("deadlock", "40001", 1213));
+        })).isInstanceOf(CannotAcquireLockException.class);
         assertThat(attempts.get()).isEqualTo(3);
     }
 }
