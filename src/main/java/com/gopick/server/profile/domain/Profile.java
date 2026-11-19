@@ -4,6 +4,8 @@ import com.gopick.server.account.domain.Account;
 import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 
 @Entity
@@ -27,6 +29,12 @@ public class Profile {
 
     @Column(nullable = false)
     private String contactId;
+
+    // The original columns remain the first contact for existing records and clients.
+    @ElementCollection
+    @CollectionTable(name = "profile_additional_contact", joinColumns = @JoinColumn(name = "profile_id"))
+    @OrderColumn(name = "contact_order")
+    private List<ProfileContact> additionalContacts = new ArrayList<>();
 
     private boolean isPublic;
 
@@ -113,6 +121,22 @@ public class Profile {
 
     public String getContactId() {
         return contactId;
+    }
+
+    public List<ProfileContact> getContacts() {
+        List<ProfileContact> contacts = new ArrayList<>();
+        if (contactPlatform != null && !contactPlatform.isBlank() && contactId != null && !contactId.isBlank()) {
+            contacts.add(new ProfileContact(contactPlatform, contactId));
+        }
+        contacts.addAll(additionalContacts);
+        return contacts;
+    }
+
+    public void replaceContacts(List<ProfileContact> contacts) {
+        contactPlatform = contacts.isEmpty() ? "" : contacts.getFirst().getPlatform();
+        contactId = contacts.isEmpty() ? "" : contacts.getFirst().getValue();
+        additionalContacts.clear();
+        if (contacts.size() > 1) additionalContacts.addAll(contacts.subList(1, contacts.size()));
     }
 
     public boolean isPublic() {

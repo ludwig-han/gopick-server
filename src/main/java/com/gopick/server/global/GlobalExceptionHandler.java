@@ -16,6 +16,12 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(ProfileContactConflictException.class)
+    public ResponseEntity<ValidationErrorResponse> handleContactConflict(ProfileContactConflictException e) {
+        return ResponseEntity.badRequest().body(new ValidationErrorResponse(
+                "VALIDATION_ERROR", "입력값을 확인해주세요.", Map.of("contacts", e.getMessage())));
+    }
+
     @ExceptionHandler(DuplicateEmailException.class)
     public ResponseEntity<ErrorResponse> handleDuplicateEmailException(DuplicateEmailException e) {
         ErrorResponse response = new ErrorResponse(

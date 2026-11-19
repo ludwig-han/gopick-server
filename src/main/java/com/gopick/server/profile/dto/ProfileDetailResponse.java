@@ -9,6 +9,7 @@ public record ProfileDetailResponse(
         String major,
         String contactPlatform,
         String contactId,
+        List<Contact> contacts,
         boolean isPublic,
         String teamTendency,
         String intro,
@@ -19,6 +20,7 @@ public record ProfileDetailResponse(
         List<Preference> preferences,
         List<Experience> experiences
 ) {
+    public record Contact(String platform, String value) {}
     public record Technology(String technology, Integer level) {}
 
     public record Preference(ProfilePreferenceCategory category, String value) {}
