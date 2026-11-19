@@ -1,6 +1,7 @@
 package com.gopick.server.project;
 
 import com.gopick.server.profile.domain.Profile;
+import com.gopick.server.profile.domain.ProfileContact;
 import com.gopick.server.project.domain.*;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
@@ -62,11 +63,16 @@ class ParticipationCapacityContactIntegrationTests extends ProjectApiFixture {
 
     @Test
     void acceptedApplicationSharesContactsWithCurrentLeaderOnlyIncludingPrivateProfiles() throws Exception {
+        candidate.replaceContacts(List.of(new ProfileContact("DISCORD", "contact-secret"),
+                new ProfileContact("email", "candidate@example.com")));
         int id = create("APPLY", ProjectRole.BACKEND);
         contact(leader, candidate, 403, null);
         contact(outsider, leaderProfile, 200, null);
         resolve(leader, id, "ACCEPTED", 200);
         contact(leader, candidate, 200, "contact-secret");
+        mvc.perform(get("/profiles/" + candidate.getId()).session(session(leader)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.contacts.length()").value(2))
+                .andExpect(jsonPath("$.contacts[1].value").value("candidate@example.com"));
         contact(outsider, leaderProfile, 200, "contact-secret");
         contact(member, candidate, 403, null);
         mvc.perform(post(path() + "/start").session(session(leader))).andExpect(status().isOk());
@@ -120,7 +126,8 @@ class ParticipationCapacityContactIntegrationTests extends ProjectApiFixture {
         mvc.perform(get("/profiles/" + leaderProfile.getId()).session(session(outsider)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.contactPlatform").value(nullValue()))
-                .andExpect(jsonPath("$.contactId").value(nullValue()));
+                .andExpect(jsonPath("$.contactId").value(nullValue()))
+                .andExpect(jsonPath("$.contacts").isEmpty());
     }
 
     private int create(String type, ProjectRole role) throws Exception {

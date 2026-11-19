@@ -66,16 +66,18 @@ public class ProfileService {
             throw new DuplicateProfileException();
         }
 
+        List<ProfileContact> contacts = requestedContacts(profileRequest);
         Profile profile = new Profile(
                 account,
                 profileRequest.getName(),
                 profileRequest.getMajor(),
-                profileRequest.getContactPlatform(),
-                profileRequest.getContactId(),
+                contacts.isEmpty() ? "" : contacts.getFirst().getPlatform(),
+                contacts.isEmpty() ? "" : contacts.getFirst().getValue(),
                 profileRequest.getIsPublic(),
                 profileRequest.getTeamTendency(),
                 profileRequest.getIntro()
         );
+        profile.replaceContacts(contacts);
 
         Profile savedProfile = profileRepository.save(profile);
 
@@ -196,6 +198,9 @@ public class ProfileService {
                 profile.getMajor(),
                 canViewContact ? profile.getContactPlatform() : null,
                 canViewContact ? profile.getContactId() : null,
+                canViewContact ? profile.getContacts().stream()
+                        .map(contact -> new ProfileDetailResponse.Contact(contact.getPlatform(), contact.getValue()))
+                        .toList() : List.of(),
                 profile.isPublic(),
                 profile.getTeamTendency(),
                 profile.getIntro(),
@@ -223,19 +228,40 @@ public class ProfileService {
             throw new ProfileAccessDeniedException();
         }
 
+        List<ProfileContact> contacts = requestedContacts(profileRequest);
+        if (profileRequest.getContacts() == null) {
+            // Older clients only know the first contact. Preserve other platforms on update.
+            String platform = contacts.getFirst().getPlatform();
+            var remaining = profile.getContacts().stream().skip(1).toList();
+            if (remaining.stream().anyMatch(c -> c.getPlatform().strip().equalsIgnoreCase(platform))) {
+                throw new ProfileContactConflictException();
+            }
+            contacts.addAll(remaining);
+        }
         profile.update(
                 profileRequest.getName(),
                 profileRequest.getMajor(),
-                profileRequest.getContactPlatform(),
-                profileRequest.getContactId(),
+                contacts.isEmpty() ? "" : contacts.getFirst().getPlatform(),
+                contacts.isEmpty() ? "" : contacts.getFirst().getValue(),
                 profileRequest.getIsPublic(),
                 profileRequest.getTeamTendency(),
                 profileRequest.getIntro()
         );
+        profile.replaceContacts(contacts);
 
         deleteProfileDetails(profileId);
 
         saveProfileDetails(profile, profileRequest);
+    }
+
+    private List<ProfileContact> requestedContacts(ProfileRequest request) {
+        if (request.getContacts() == null) {
+            return new java.util.ArrayList<>(List.of(new ProfileContact(
+                    request.getContactPlatform().strip(), request.getContactId().strip())));
+        }
+        return request.getContacts().stream()
+                .map(c -> new ProfileContact(c.platform().strip(), c.value().strip()))
+                .collect(Collectors.toCollection(java.util.ArrayList::new));
     }
 
     private void saveProfileDetails(Profile profile, ProfileRequest profileRequest) {

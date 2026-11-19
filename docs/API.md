@@ -192,8 +192,10 @@ PATCH /profiles/{profileId}
 {
   "name": "홍길동",
   "major": "컴퓨터공학",
-  "contactPlatform": "DISCORD",
-  "contactId": "gildong",
+  "contacts": [
+    {"platform": "이메일", "value": "gildong@example.com"},
+    {"platform": "링크드인", "value": "https://example.com/gildong"}
+  ],
   "isPublic": true,
   "teamTendency": "FOLLOW",
   "intro": "백엔드 개발에 관심이 있습니다.",
@@ -225,7 +227,9 @@ PATCH /profiles/{profileId}
 }
 ```
 
-`name`, `major`, `contactPlatform`, `contactId`, `isPublic`, `parts`, `interests`, `preferredRoles`, `technologies`는 필수입니다. 기술 숙련도는 1~4입니다.
+`name`, `major`, `isPublic`, `parts`, `interests`, `preferredRoles`, `technologies`와 `contacts`가 필요합니다. `contacts`는 빈 배열부터 최대 3개까지 허용하며 순서를 유지합니다. 각 `platform`, `value`는 공백이 아닌 255자 이하 문자열이어야 합니다. 플랫폼은 앞뒤 공백과 영문 대소문자를 무시해 중복을 검사하며, 잘못된 값은 `400 VALIDATION_ERROR`입니다. 수정 시 `contacts`는 전체 목록을 교체합니다. 기술 숙련도는 1~4입니다.
+
+기존 클라이언트를 위해 `contacts` 대신 `contactPlatform`과 `contactId` 한 쌍도 받을 수 있습니다. 기존 형식으로 수정하면 첫 번째 연락처만 바꾸고 나머지는 유지합니다. 기존 형식의 플랫폼이 다른 연락처와 중복되면 `400 VALIDATION_ERROR`입니다. 두 형식이 동시에 오면 `contacts`가 우선합니다.
 
 생성 성공 시 `201 Created`와 `{"profileId":3}`을 반환합니다. 본인 프로필 수정 성공 시 `204 No Content`를 반환합니다.
 
@@ -235,7 +239,7 @@ PATCH /profiles/{profileId}
 GET /profiles/{profileId}
 ```
 
-성공 시 `200 OK`를 반환합니다. 본인과 수락된 참여 요청의 상대는 공개 여부와 관계없이 프로필과 `contactPlatform`, `contactId`를 조회할 수 있습니다. APPLY는 지원자와 해당 프로젝트의 현재 팀장, OFFER는 제안받은 사람과 최초 제안자 사이에 양방향으로 공개합니다. APPLY의 팀장 변경 시 접근 대상도 현재 팀장으로 바뀝니다. 삭제된 프로젝트의 요청은 공개 근거가 되지 않습니다. 그 외 사용자가 공개 프로필을 조회하면 두 연락처 필드는 `null`이며, 비공개 프로필은 `403 PRIVATE_PROFILE`입니다.
+성공 시 `200 OK`를 반환합니다. 본인과 수락된 참여 요청의 상대는 공개 여부와 관계없이 프로필과 `contacts`를 조회할 수 있습니다. APPLY는 지원자와 해당 프로젝트의 현재 팀장, OFFER는 제안받은 사람과 최초 제안자 사이에 양방향으로 공개합니다. APPLY의 팀장 변경 시 접근 대상도 현재 팀장으로 바뀝니다. 삭제된 프로젝트의 요청은 공개 근거가 되지 않습니다. 그 외 사용자가 공개 프로필을 조회하면 `contacts`는 `[]`이며, 비공개 프로필은 `403 PRIVATE_PROFILE`입니다. 호환성을 위해 `contactPlatform`, `contactId`도 첫 번째 연락처 값으로 반환하고 권한이 없으면 `null`로 반환합니다.
 
 본인 프로필 조회 응답 예시
 
@@ -246,6 +250,7 @@ GET /profiles/{profileId}
   "major": "컴퓨터공학",
   "contactPlatform": "DISCORD",
   "contactId": "gildong",
+  "contacts": [{"platform": "DISCORD", "value": "gildong"}],
   "isPublic": true,
   "teamTendency": "FOLLOW",
   "intro": "백엔드 개발에 관심이 있습니다.",
