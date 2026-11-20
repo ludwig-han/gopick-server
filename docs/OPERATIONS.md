@@ -1,6 +1,6 @@
 # GoPick Operations
 
-로컬 개발, 테스트, 환경변수, Staging 배포 확인, 기존 MySQL 마이그레이션을 정리한 문서입니다.
+GoPick 백엔드의 로컬 개발, 테스트, 환경변수, 배포 구성과 MySQL 마이그레이션을 정리한 문서입니다.
 
 API 계약은 [API.md](API.md), 도메인 규칙은 [DOMAIN.md](DOMAIN.md)를 참고합니다.
 
@@ -16,7 +16,21 @@ API 계약은 [API.md](API.md), 도메인 규칙은 [DOMAIN.md](DOMAIN.md)를 �
 - H2 (test)
 - Gradle Wrapper
 
-테스트는 별도 H2 인메모리 DB를 사용합니다.
+테스트 환경에서는 H2 인메모리 DB를 사용합니다.
+
+프로젝트 운영 당시 백엔드는 AWS EC2에 배포했으며 다음 구조로 운영했습니다.
+
+```text
+Client
+  ↓
+Nginx
+  ↓
+Spring Boot
+  ↓
+MySQL
+```
+
+Spring Boot 애플리케이션은 `systemd` 서비스로 등록하여 실행과 재시작을 관리했습니다.
 
 ---
 
@@ -29,57 +43,95 @@ API 계약은 [API.md](API.md), 도메인 규칙은 [DOMAIN.md](DOMAIN.md)를 �
 | `PORT` | 선택 | HTTP 포트, 기본값 `8080` |
 | `DB_URL` | 선택 | JDBC URL, 기본값 `jdbc:mysql://localhost:3306/gopick` |
 | `DB_USERNAME` | 선택 | MySQL 사용자, 기본값 `root` |
-| `DB_PASSWORD` | 로컬 / 서버 DB 연결 시 필수 | MySQL 사용자 비밀번호 |
-| `CORS_ALLOWED_ORIGINS` | 선택 | `http://localhost:5173,http://127.0.0.1:5173` |
-| `SESSION_COOKIE_SAME_SITE` | 선택 | `lax` |
-| `SESSION_COOKIE_SECURE` | 선택 | `false` |
-| `RECOMMENDATION_AI_MODE` | 선택 | `stub`; 실제 Upstage 추천은 `upstage` |
-| `UPSTAGE_API_KEY` | AI 기능 사용 시 필수 | Upstage API key |
-| `UPSTAGE_BASE_URL` | 선택 | `https://api.upstage.ai/v1` |
-| `UPSTAGE_MODEL` | 선택 | `solar-pro4` |
+| `DB_PASSWORD` | DB 연결 시 필수 | MySQL 비밀번호 |
+| `CORS_ALLOWED_ORIGINS` | 선택 | 허용할 Frontend Origin |
+| `SESSION_COOKIE_SAME_SITE` | 선택 | 기본값 `lax` |
+| `SESSION_COOKIE_SECURE` | 선택 | 기본값 `false` |
+| `RECOMMENDATION_AI_MODE` | 선택 | 기본값 `stub`, 실제 Upstage 추천은 `upstage` |
+| `UPSTAGE_API_KEY` | AI 기능 사용 시 필수 | Upstage API Key |
+| `UPSTAGE_BASE_URL` | 선택 | 기본값 `https://api.upstage.ai/v1` |
+| `UPSTAGE_MODEL` | 선택 | 기본값 `solar-pro4` |
 
-API key, DB 비밀번호 등 secret은 Git에 커밋하지 않습니다.
+API Key와 DB 비밀번호 등 secret은 Git에 커밋하지 않습니다.
 
-### Railway
+### EC2 환경변수
 
-루트의 Dockerfile은 Java 21로 애플리케이션을 빌드하고 실행합니다. Railway 앱 서비스의 배포 소스로 `gopick-server`의 `main`을 연결합니다. 저장소가 목록에 없으면 Railway GitHub App의 저장소 접근 범위를 확인합니다. 앱 서비스에서 MySQL 서비스의 **내부 연결 정보**를 참조하도록 환경변수를 설정합니다. 아래 `MySQL`은 Railway에서 실제로 만든 DB 서비스 이름으로 바꿉니다.
+운영 당시 서버 환경변수는 다음 파일에서 관리했습니다.
 
 ```text
-DB_URL=jdbc:mysql://${{MySQL.MYSQLHOST}}:${{MySQL.MYSQLPORT}}/${{MySQL.MYSQLDATABASE}}
-DB_USERNAME=${{MySQL.MYSQLUSER}}
-DB_PASSWORD=${{MySQL.MYSQLPASSWORD}}
-CORS_ALLOWED_ORIGINS=https://실제-프론트-주소
+/etc/gopick/gopick.env
 ```
 
-Railway의 `PORT`는 앱이 자동으로 사용합니다. 앱 서비스의 **Networking → Public Networking → Generate Domain**에서 공개 HTTPS 주소를 생성하고 앱이 듣는 포트로 연결된 것을 확인합니다. 프론트의 직접 호출 주소나 프록시 대상에는 이 공개 주소를 사용합니다. MySQL 연결은 서비스 내부 주소를 사용합니다.
+확인:
 
-AI 모집글은 `UPSTAGE_API_KEY`가 필요합니다. 실제 AI 추천도 사용하려면 같은 키와 `RECOMMENDATION_AI_MODE=upstage`를 설정합니다. 비밀값은 Railway의 변수로 관리합니다.
+```bash
+sudo cat /etc/gopick/gopick.env
+```
 
-기존 AWS staging에서 전환하는 순서입니다.
+특정 항목만 확인:
 
-1. 원본·대상 DB와 배포 커밋을 확인합니다. 최종 복사 전에 AWS staging의 쓰기를 중지한 뒤 백업을 만들어 Railway MySQL에 복원합니다.
-2. **최종 복원된 DB에서** 이 문서 7절의 두 스키마 변경 적용 여부를 확인합니다. 기존 테이블에 변경이 빠져 있으면 해당 SQL을 적용합니다. 아직 새 알림 유형을 읽을 수 없는 구버전 앱이 같은 DB에 연결되어 있으면 이 단계에서 교체합니다.
-3. 새 앱을 시작하고 로그와 공개 도메인 응답을 확인합니다. 인증 없이 `GET /me`가 `401 UNAUTHENTICATED`를 반환하는지 확인합니다. 이어서 Railway 공개 주소를 직접 호출하거나 그 주소로 프록시하는 별도 테스트 프론트에서 로그인하고, 기존 계정의 프로젝트·요청·알림 조회 등 8절의 주요 흐름을 테스트합니다.
-4. 검증을 마친 뒤 프론트 API 주소를 Railway로 전환합니다. 두 DB는 복사 후 자동으로 동기화되지 않습니다.
+```bash
+sudo grep -E '^(PORT|CORS_ALLOWED_ORIGINS|SESSION_COOKIE_SAME_SITE|SESSION_COOKIE_SECURE|JAVA_TOOL_OPTIONS)=' /etc/gopick/gopick.env
+```
 
-### 프론트 연동
+환경변수를 수정한 뒤에는 Spring Boot 프로세스를 재시작합니다.
 
-로컬의 `gopick-web`에서 `npm run dev`를 실행하면 [.env.development](https://github.com/seonyoung05/gopick-web/blob/main/.env.development)의 `VITE_API_BASE_URL=/api`를 사용합니다. [Vite 개발 프록시](https://github.com/seonyoung05/gopick-web/blob/main/vite.config.ts)는 `/api`를 제거하고 요청을 AWS staging에 전달합니다. 브라우저에서는 각자의 컴퓨터에서 dev 서버가 출력한 주소를 엽니다.
+```bash
+sudo systemctl restart gopick
+```
 
-정적 빌드 배포에서는 호스팅에 맞는 방식을 설정합니다.
+### JVM Timezone
 
-| 방식 | 프론트 빌드·호스팅 설정 |
-|---|---|
-| 같은 출처의 `/api` | `VITE_API_BASE_URL=/api`로 빌드하고 정적 호스트에 `/api/*`를 백엔드로 전달하는 리버스 프록시를 설정합니다. 백엔드 경로로 전달할 때 `/api` 접두어를 제거하고 `Cookie` 및 `Set-Cookie`를 전달합니다. Spring이 전달받은 브라우저 `Origin`을 교차 출처로 판단하면 `CORS_ALLOWED_ORIGINS`에 그 프론트 출처를 등록합니다. |
-| 백엔드 공개 주소 직접 호출 | 빌드 환경에 `VITE_API_BASE_URL=https://백엔드-공개-주소`를 설정하고 `npm run build`로 다시 빌드합니다. 백엔드 `CORS_ALLOWED_ORIGINS`에 실제 프론트의 출처를 등록합니다. 여러 출처는 쉼표로 구분합니다. |
+주요 시간 필드는 `LocalDateTime.now()`를 사용하므로 JVM 기본 시간대의 영향을 받습니다.
 
-브라우저에서 인증에 필요한 요청은 `credentials: 'include'`로 보냅니다. 브라우저에서 백엔드를 직접 호출하며 두 사이트가 다르면 HTTPS를 사용하고 백엔드에서 `SESSION_COOKIE_SAME_SITE=none`과 `SESSION_COOKIE_SECURE=true`를 설정합니다. 브라우저가 사이트 간 쿠키를 막는 환경에서는 같은 출처의 `/api` 방식을 사용합니다.
+운영 환경에서는 JVM 시간대를 한국 시간으로 설정했습니다.
+
+```text
+JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Seoul
+```
 
 ---
 
-## 3. 로컬 실행
+## 3. CORS / Session
 
-Windows CMD 예시:
+GoPick은 `JSESSIONID`를 사용하는 서버 세션 기반 인증을 사용합니다.
+
+프론트엔드에서는 인증 요청에 쿠키를 포함합니다.
+
+```ts
+fetch(url, {
+  credentials: 'include',
+});
+```
+
+백엔드에서는 프론트엔드 Origin을 `CORS_ALLOWED_ORIGINS`에 등록합니다.
+
+여러 Origin은 쉼표로 구분합니다.
+
+```text
+CORS_ALLOWED_ORIGINS=http://localhost:5173,https://frontend.example.com
+```
+
+서로 다른 사이트의 프론트엔드와 백엔드가 세션 쿠키를 사용해 통신하는 경우 다음 설정이 필요할 수 있습니다.
+
+```text
+SESSION_COOKIE_SAME_SITE=none
+SESSION_COOKIE_SECURE=true
+```
+
+`Secure` 쿠키를 사용할 때는 HTTPS 환경이 필요합니다.
+
+---
+
+## 4. 로컬 실행
+
+MySQL에 `gopick` 데이터베이스를 생성합니다.
+
+```sql
+CREATE DATABASE gopick;
+```
+
+### Windows
 
 ```cmd
 set DB_PASSWORD=...
@@ -88,7 +140,7 @@ set RECOMMENDATION_AI_MODE=upstage
 gradlew bootRun
 ```
 
-WSL / Linux 예시:
+### Linux / macOS / WSL
 
 ```bash
 export DB_PASSWORD='...'
@@ -97,94 +149,168 @@ export RECOMMENDATION_AI_MODE='upstage'
 ./gradlew bootRun
 ```
 
-AI 추천을 실제 외부 API 없이 확인하려면 기본 `stub` 모드를 사용할 수 있습니다.
+기본 서버 주소:
+
+```text
+http://localhost:8080
+```
+
+실제 AI API 없이 추천 기능을 확인하려면 기본값인 `stub` 모드를 사용할 수 있습니다.
 
 ---
 
-## 4. 테스트
+## 5. 테스트
 
 전체 테스트:
 
-Windows:
+### Windows
 
 ```cmd
 gradlew test --console=plain
 ```
 
-WSL / Linux:
+### Linux / macOS / WSL
 
 ```bash
 ./gradlew test --console=plain
 ```
 
-테스트용 설정은 H2를 사용하므로 운영 MySQL에 연결하지 않습니다.
+일반 테스트 환경에서는 H2 인메모리 DB를 사용하므로 운영 MySQL에 연결하지 않습니다.
 
-최종 merge 전 최소 기준:
+기능 변경 또는 merge 전에는 다음을 확인합니다.
 
 1. 전체 테스트 통과
-2. secret / 로컬 설정 파일 미커밋 확인
-3. 변경 API와 문서 동기화
-4. Staging 주요 흐름 smoke test
+2. secret 및 로컬 설정 파일 미커밋 확인
+3. API 변경 시 관련 문서 갱신
+4. 주요 사용자 흐름 직접 확인
+
+### 실제 MySQL 교착 회귀 테스트
+
+일반 테스트와 별도로 실제 MySQL의 잠금 경합과 교착 상황을 검증하는 테스트가 있습니다.
+
+`MySqlProgressWithdrawalHttpAuditTests`는 회원 탈퇴와 프로젝트 상태 변경이 동시에 발생하는 상황에서 교착 재시도와 결과를 검증합니다.
+
+이 테스트는 별도의 일회용 MySQL 데이터베이스에서 실행해야 합니다.
+
+PowerShell 예시:
+
+```powershell
+$env:GOPICK_MYSQL_DEADLOCK_TEST = 'true'
+$env:SPRING_DATASOURCE_URL = 'DB_URL'
+$env:SPRING_DATASOURCE_USERNAME = 'DB_USER'
+$env:SPRING_DATASOURCE_PASSWORD = 'DB_PASSWORD'
+$env:SPRING_DATASOURCE_DRIVER_CLASS_NAME = 'com.mysql.cj.jdbc.Driver'
+
+.\gradlew.bat test --tests '*MySqlProgressWithdrawalHttpAuditTests'
+```
+
+테스트 설정에서 스키마를 생성하고 삭제할 수 있으므로 운영 DB나 실제 데이터가 있는 DB에는 연결하지 않습니다.
 
 ---
 
-## 5. Staging
+## 6. EC2 배포 구성
 
-AWS staging 주소
+프로젝트 운영 당시 백엔드는 AWS EC2에서 실행했습니다.
+
+외부 요청은 Nginx가 받은 뒤 Spring Boot 애플리케이션으로 전달했습니다.
 
 ```text
-https://3-39-65-219.nip.io
+Internet
+   ↓
+Nginx
+   ↓
+Spring Boot
 ```
 
-스테이징 주소와 배포 커밋을 확인한 뒤 테스트합니다. `GET /me`의 비로그인 `401`은 서비스 응답을 확인하는 데 쓰고, 최신 API의 동작은 해당 경로에서 별도로 확인합니다. 세션을 유지하려면 curl의 cookie jar를 사용합니다.
+Spring Boot 프로세스는 `gopick` systemd 서비스로 관리했습니다.
 
-회원가입 예시:
-
-```bash
-curl -i -c cookies.txt \
-  -X POST "https://3-39-65-219.nip.io/accounts" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"stage-test@example.com","password":"test1234"}'
-```
-
-회원가입 성공 시 자동 로그인되므로 이후:
-
-```bash
-curl -i -b cookies.txt "https://3-39-65-219.nip.io/me"
-```
-
-처럼 같은 cookie를 사용합니다.
-
----
-
-## 6. 서버 배포 확인
-
-현재 서버 운영 흐름에서 배포 스크립트를 사용하는 경우:
-
-```bash
-cd ~/gopick-server
-./deploy.sh
-```
-
-배포 후 서비스 확인:
+### 서비스 상태 확인
 
 ```bash
 sudo systemctl status gopick --no-pager
+```
+
+### 시작
+
+```bash
+sudo systemctl start gopick
+```
+
+### 중지
+
+```bash
+sudo systemctl stop gopick
+```
+
+### 재시작
+
+```bash
+sudo systemctl restart gopick
+```
+
+### 로그 확인
+
+```bash
 sudo journalctl -u gopick -n 100 --no-pager
 ```
 
-Staging의 Upstage 기능을 사용하려면 서버 프로세스 환경에 최소 다음 값이 필요합니다.
+실시간 로그:
 
-```text
-UPSTAGE_API_KEY
-RECOMMENDATION_AI_MODE=upstage
+```bash
+sudo journalctl -u gopick -f
 ```
 
-`UPSTAGE_BASE_URL`, `UPSTAGE_MODEL`은 application 기본값을 사용할 수 있습니다.
+### Nginx
+
+상태 확인:
+
+```bash
+sudo systemctl status nginx --no-pager
+```
+
+설정 확인:
+
+```bash
+sudo nginx -t
+```
+
+설정이 정상이라면 재시작합니다.
+
+```bash
+sudo systemctl restart nginx
+```
+
+AWS EC2 staging 환경은 프로젝트 종료 후 종료했으므로 활성 staging 주소는 문서에 유지하지 않습니다.
 
 ---
 
-## 7. DB Schema / Migration
+## 7. Build
+
+Spring Boot 실행 JAR 생성:
+
+### Windows
+
+```cmd
+gradlew bootJar
+```
+
+### Linux / macOS / WSL
+
+```bash
+./gradlew bootJar
+```
+
+생성된 JAR은 기본적으로 다음 디렉터리에 위치합니다.
+
+```text
+build/libs/
+```
+
+운영 환경에서는 빌드된 Spring Boot 애플리케이션을 systemd 서비스로 실행했습니다.
+
+---
+
+## 8. DB Schema / Migration
 
 현재 JPA 설정:
 
@@ -192,9 +318,9 @@ RECOMMENDATION_AI_MODE=upstage
 spring.jpa.hibernate.ddl-auto=update
 ```
 
-새 테이블 / 컬럼의 일반적인 추가는 Hibernate가 처리할 수 있지만, 기존 제약 변경이나 enum 컬럼 변경을 `ddl-auto=update`에만 의존하면 안 됩니다.
+새로운 테이블이나 단순한 컬럼 추가는 Hibernate가 반영할 수 있지만, 기존 제약조건 변경이나 기존 데이터가 있는 컬럼 변경은 `ddl-auto=update`에만 의존하지 않습니다.
 
-기존 MySQL에 필요한 수동 migration SQL은 `docs/migrations/`에 유지합니다.
+수동으로 필요한 MySQL 변경은 `docs/migrations/`에서 SQL 파일로 관리합니다.
 
 ### project_member.profile_id nullable
 
@@ -204,13 +330,12 @@ spring.jpa.hibernate.ddl-auto=update
 docs/migrations/issue-29-project-member-profile-nullable.sql
 ```
 
-완료 프로젝트에서 탈퇴한 회원의 참여 기록을 남기기 위해 기존 DB의 `project_member.profile_id`를 nullable로 바꿉니다.
+완료 프로젝트에서 탈퇴한 회원의 참여 기록을 유지하기 위해 `project_member.profile_id`를 nullable로 변경합니다.
 
 ```sql
-ALTER TABLE project_member MODIFY COLUMN profile_id BIGINT NULL;
+ALTER TABLE project_member
+MODIFY COLUMN profile_id BIGINT NULL;
 ```
-
-기존 DB에서 아직 적용하지 않았다면 관련 서버 버전을 배포하기 전에 한 번 실행합니다.
 
 ### notification type / actor
 
@@ -220,18 +345,55 @@ ALTER TABLE project_member MODIFY COLUMN profile_id BIGINT NULL;
 docs/migrations/notification-actor-and-event-types.sql
 ```
 
-기존 `notification` 테이블이 있고 이 변경이 빠져 있으면, 대상 DB에 서버를 배포하기 전에 [마이그레이션 SQL](migrations/notification-actor-and-event-types.sql)을 한 번 실행합니다.
+기존 `notification` 테이블에 다음 변경을 적용합니다.
 
 - `type`을 `VARCHAR(40)`으로 변경
-- `actor_account_id`를 nullable 컬럼으로 추가
+- `actor_account_id` nullable 컬럼 추가
 
-`notification` 테이블이 없는 DB에서는 새 앱의 Hibernate가 현재 스키마를 생성합니다. 여러 앱 인스턴스가 같은 DB를 사용한다면 새 알림 유형을 기록하기 전에 이전 버전 인스턴스를 중지하거나 교체합니다.
+### profile additional contacts
+
+파일:
+
+```text
+docs/migrations/profile-additional-contacts.sql
+```
+
+기존 프로필 연락처 구조에 추가 연락처를 지원하기 위한 스키마 변경을 적용합니다.
 
 ---
 
-## 8. 최종 Smoke Test
+## 9. 시간 데이터
 
-제출 전 실제 프론트 + Staging에서 최소 다음 흐름을 확인합니다.
+GoPick의 주요 시간 값은 Java의 `LocalDateTime`을 사용합니다.
+
+예:
+
+- `account.created_at`
+- `profile.created_at`
+- `profile.updated_at`
+- `project.created_at`
+- `project.status_updated_at`
+- `project.stage_updated_at`
+- `project.deleted_at`
+- `project_member.joined_at`
+- `participation_request.created_at`
+- `participation_request.resolved_at`
+- `notification.created_at`
+- `notification.read_at`
+
+`LocalDateTime` 자체에는 timezone 정보가 포함되지 않으므로 서버의 JVM 시간대 설정에 영향을 받습니다.
+
+운영 환경에서는 다음 JVM timezone을 사용했습니다.
+
+```text
+Asia/Seoul
+```
+
+---
+
+## 10. Smoke Test
+
+실제 프론트엔드와 백엔드 연동 시 최소 다음 흐름을 확인합니다.
 
 ### Account / Profile
 
@@ -245,16 +407,16 @@ docs/migrations/notification-actor-and-event-types.sql
 - Project 생성 / 수정 / 목록 / 상세
 - 모집 조건 / 링크 저장
 - AI 모집글 초안 생성
-- 편집한 `post` 저장 / 재조회
+- 편집한 모집글 저장 / 재조회
 - Project 시작
 - Stage 변경
-- 완료
+- Project 완료
 
-### Team flow
+### Team Flow
 
 - APPLY 생성 / 취소
 - OFFER 생성 / 취소
-- 수락 / 거절
+- 참여 요청 수락 / 거절
 - 팀장 위임
 - MEMBER 하차
 
@@ -268,8 +430,10 @@ docs/migrations/notification-actor-and-event-types.sql
 
 - 참여 요청 알림
 - 수락 / 거절 알림
-- 프로젝트 상태 / Stage / 위임 / 하차·삭제 관련 알림
-- 참여 요청 알림에서 해당 보낸·받은 요청으로 이동
-- 읽음 처리와 재조회 시 최초 읽음 시각 유지
+- 프로젝트 상태 변경 알림
+- Stage 변경 알림
+- 팀장 위임 / 하차 / 삭제 알림
+- 읽음 처리
+- 최초 읽음 시각 유지
 
-문제가 발견되면 새 기능을 추가하기보다 제출 범위의 기존 사용자 흐름을 우선 수정합니다.
+문제가 발견되면 새 기능을 추가하기보다 기존 사용자 흐름의 정상 동작을 우선 확인합니다.
